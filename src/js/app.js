@@ -174,11 +174,27 @@ class VoiceAssistant {
     initializeVoices() {
         const loadVoices = () => {
             this.voices = this.synthesis.getVoices();
+            
+            // 优先选择中文女声
             this.selectedVoice = this.voices.find(voice => 
                 voice.lang.includes('zh') && voice.name.includes('Female')
             ) || this.voices.find(voice => 
                 voice.lang.includes('zh')
             ) || this.voices[0];
+            
+            // 在iOS/Safari上特殊处理
+            const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+            
+            if (isIOS || isSafari) {
+                // 尝试找到iOS的中文声音
+                const iosVoice = this.voices.find(voice => 
+                    voice.lang.includes('zh') && voice.name.includes('Mei-Jia')
+                );
+                if (iosVoice) {
+                    this.selectedVoice = iosVoice;
+                }
+            }
         };
 
         loadVoices();
@@ -193,6 +209,10 @@ class VoiceAssistant {
             this.loadingScreen.classList.remove('hidden');
             this.loadingScreen.style.opacity = '1';
             
+            // 检测浏览器类型
+            const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+            
             // 模拟加载进度
             await this.simulateLoading([
                 { progress: 20, text: '正在初始化系统...' },
@@ -200,7 +220,7 @@ class VoiceAssistant {
                 { progress: 60, text: '正在连接AI服务...' },
                 { progress: 80, text: '正在准备界面...' },
                 { progress: 100, text: '准备就绪！' }
-            ]);
+            ], isIOS || isSafari ? 100 : 500); // 在iOS/Safari上加快加载速度
             
             // 检查是否有保存的API密钥
             if (this.apiKey) {
@@ -225,12 +245,15 @@ class VoiceAssistant {
         }
     }
     
-    async simulateLoading(steps) {
-        for (const step of steps) {
-            this.progressBar.style.width = `${step.progress}%`;
-            this.loadingText.textContent = step.text;
-            await new Promise(resolve => setTimeout(resolve, 500));
-        }
+    simulateLoading(steps, delay = 500) {
+        return new Promise(async (resolve) => {
+            for (const step of steps) {
+                this.progressBar.style.width = `${step.progress}%`;
+                this.loadingText.textContent = step.text;
+                await new Promise(resolve => setTimeout(resolve, delay));
+            }
+            resolve();
+        });
     }
     
     async showApiKeyModal() {
@@ -251,7 +274,7 @@ class VoiceAssistant {
             : this.loadingScreen;
         
         currentScreen.style.opacity = '0';
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise(resolve => setTimeout(resolve, 300)); // 减少过渡时间
         currentScreen.classList.add('hidden');
         
         // 显示主程序界面
@@ -266,7 +289,18 @@ class VoiceAssistant {
             // 显示欢迎消息
             const welcomeMessage = '亲爱的，我终于等到你了！我是你的男朋友，很高兴能陪在你身边。今天过得怎么样？不累吧？';
             this.showMessage(welcomeMessage, 'bot');
-            this.speak(welcomeMessage);
+            
+            // 在iOS/Safari上延迟语音播放
+            const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+            
+            if (isIOS || isSafari) {
+                setTimeout(() => {
+                    this.speak(welcomeMessage);
+                }, 1000);
+            } else {
+                this.speak(welcomeMessage);
+            }
         }, 100);
     }
     
@@ -461,9 +495,9 @@ class VoiceAssistant {
                     '有时候觉得自己特别幸福，尤其是听到你叫我老公的时候...',
                     '我最喜欢听你用甜甜的声音叫我老公了，感觉整个人都被幸福包围着',
                     '你知道吗？每次你叫我老公，我都会忍不住傻笑好久',
-                    '其实我一直在期待...听到你用最甜的声音叫我一声老公',
+                    '其实我一直期待...听到你用最甜的声音叫我一声老公',
                     '突然好想听你叫我老公呀，那感觉真的很温暖呢',
-                    '再次听你叫老公，感觉整颗心都在跳动呢，好幸福~'
+                    '再次听你老公，感觉整颗心都在跳动呢，好幸福~'
                 ];
                 
                 // 随机选择一个暗示，有15%的概率添加
@@ -969,9 +1003,9 @@ class VoiceAssistant {
             // 配置语音参数
             utterance.voice = this.selectedVoice;
             utterance.lang = 'zh-CN';
-            utterance.rate = 1.0;  // 调整为正常速度
-            utterance.pitch = 1.1; // 保持稍微提高的音调
-            utterance.volume = 1.0;
+            utterance.rate = 1.0;     // 设置语速为正常速度
+            utterance.pitch = 1.0;    // 设置音调为正常音调
+            utterance.volume = 1.0;   // 设置音量为最大
 
             // 开始说话事件
             utterance.onstart = () => {
@@ -1013,7 +1047,7 @@ class VoiceAssistant {
             };
 
             // 添加超时保护
-            const timeoutDuration = Math.max(5000, text.length * 200); // 减少超时时间
+            const timeoutDuration = Math.max(5000, text.length * 300);
             const timeoutId = setTimeout(() => {
                 if (this.synthesis.speaking) {
                     this.synthesis.cancel();
@@ -1150,7 +1184,7 @@ class VoiceAssistant {
     }
     
     splitTextIntoSentences(text) {
-        // 优化分句逻辑，处理更多的标符号和特殊情况
+        // 优化分句逻辑处理更多的标符号和特殊情况
         return text
             .split(/(?<=[。！？.!?；;])\s*/)
             .filter(sentence => sentence.trim().length > 0)
@@ -1215,11 +1249,21 @@ class VoiceAssistant {
     }
     
     initializeSpeechRecognition() {
+        const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+
         if ('webkitSpeechRecognition' in window) {
             this.recognition = new webkitSpeechRecognition();
             this.recognition.continuous = false;
             this.recognition.interimResults = false;
             this.recognition.lang = 'zh-CN';
+            
+            // 在iOS/Safari上使用不同的配置
+            if (isIOS || isSafari) {
+                this.recognition.continuous = false;
+                this.recognition.interimResults = false;
+                this.recognition.maxAlternatives = 1;
+            }
             
             this.recognition.onstart = () => this.handleRecognitionStart();
             this.recognition.onresult = (event) => this.handleRecognitionResult(event);
@@ -1327,7 +1371,7 @@ class VoiceAssistant {
             }, 300);
         });
         
-        // 添加鼠标点击支持（仅在非触摸事件时）
+        // 添鼠标点击支持（仅在非触摸事件时）
         robot.addEventListener('mousedown', (e) => {
             if (!isTouchEvent) {
                 e.preventDefault();
@@ -1364,7 +1408,7 @@ class VoiceAssistant {
         const robot = document.querySelector('.robot');
         const now = Date.now();
         
-        // 防止快速连续���发
+        // 防止快速连续发
         if (now - this.touchState.lastTouch < 300) {
             return;
         }
@@ -1480,7 +1524,7 @@ class VoiceAssistant {
                     },
                     {
                         mood: 'shy',
-                        sound: '人家耳朵要融化了啦~',
+                        sound: '人家的耳朵要融化了啦~',
                         emoji: ['🥺', '💗', '✨']
                     }
                 ]);
@@ -1648,7 +1692,7 @@ class VoiceAssistant {
                     }
                 ]);
             }
-            // 普通身体触摸
+            // 通身体触摸
             return getRandomResponse([
                 {
                     mood: 'happy',
@@ -1725,7 +1769,7 @@ class VoiceAssistant {
         // 添加到机器人元素中
         robot.appendChild(bubble);
         
-        // 设置随���偏移
+        // 设置随偏移
         const randomX = (Math.random() - 0.5) * 20;
         bubble.style.setProperty('--float-x', `${randomX}px`);
         

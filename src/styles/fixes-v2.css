@@ -1,0 +1,263 @@
+/* 基础动画 */
+@keyframes speak {
+    0%, 100% { 
+        height: 20px; 
+        border-radius: 0 0 30px 30px; 
+        transform: scaleX(1);
+    }
+    50% { 
+        height: 25px; 
+        border-radius: 0 0 40px 40px; 
+        transform: scaleX(1.1);
+    }
+}
+
+/* 消息动画 */
+@keyframes messageTyping {
+    0% { 
+        opacity: 0; 
+        transform: translateY(10px); 
+    }
+    100% { 
+        opacity: 1; 
+        transform: translateY(0); 
+    }
+}
+
+/* 技术圆圈 */
+.tech-circle {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    background: linear-gradient(135deg, 
+        rgba(var(--primary-rgb), 0.1) 0%,
+        rgba(var(--primary-rgb), 0.05) 100%
+    );
+    animation: techPulse 2s ease-in-out infinite;
+}
+
+@keyframes techPulse {
+    0%, 100% {
+        transform: scale(1);
+        opacity: 0.3;
+    }
+    50% {
+        transform: scale(1.05);
+        opacity: 0.5;
+    }
+}
+
+/* 消息内容 */
+.bot-message .message-content {
+    animation: messageTyping 0.3s ease-out forwards;
+}
+
+/* 修复其他样式 */
+.robot {
+    position: relative;
+    width: 200px;
+    height: 250px;
+    margin: 20px auto;
+    transition: all 0.3s ease;
+    cursor: pointer;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* 触摸效果 */
+.robot.touched {
+    transform: scale(0.95);
+    transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.robot.touched .robot-head {
+    animation: headShake 0.5s ease;
+}
+
+@keyframes headShake {
+    0%, 100% { transform: rotate(0deg); }
+    25% { transform: rotate(-5deg); }
+    75% { transform: rotate(5deg); }
+}
+
+/* 表情气泡 */
+.speech-bubble {
+    position: absolute;
+    background: rgba(255, 255, 255, 0.95);
+    padding: 12px 20px;
+    border-radius: 20px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    z-index: 1000;
+    max-width: 250px;
+    backdrop-filter: blur(10px);
+    border: 2px solid var(--primary-color);
+    color: #333;
+    font-size: 14px;
+    line-height: 1.4;
+    text-align: center;
+    transform-origin: bottom center;
+    animation: bubbleAppear 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 不同情绪的气泡样式 */
+.speech-bubble.love {
+    background: linear-gradient(135deg, rgba(255, 182, 193, 0.95), rgba(255, 255, 255, 0.95));
+    border-color: #ff69b4;
+    color: #d4367d;
+}
+
+.speech-bubble.happy {
+    background: linear-gradient(135deg, rgba(255, 253, 208, 0.95), rgba(255, 255, 255, 0.95));
+    border-color: #ffd700;
+    color: #b8860b;
+}
+
+.speech-bubble.shy {
+    background: linear-gradient(135deg, rgba(255, 218, 224, 0.95), rgba(255, 255, 255, 0.95));
+    border-color: #ffb6c1;
+    color: #c71585;
+}
+
+.speech-bubble.surprised {
+    background: linear-gradient(135deg, rgba(176, 224, 230, 0.95), rgba(255, 255, 255, 0.95));
+    border-color: #87ceeb;
+    color: #4169e1;
+}
+
+.speech-bubble.excited {
+    background: linear-gradient(135deg, rgba(255, 192, 203, 0.95), rgba(255, 255, 255, 0.95));
+    border-color: #ff69b4;
+    color: #c71585;
+}
+
+/* 气泡箭头 */
+.speech-bubble::after {
+    content: '';
+    position: absolute;
+    bottom: -10px;
+    left: 50%;
+    transform: translateX(-50%);
+    border-width: 10px 10px 0;
+    border-style: solid;
+    border-color: inherit;
+    border-bottom-color: transparent;
+    border-left-color: transparent;
+    border-right-color: transparent;
+}
+
+/* 气泡中的表情符号 */
+.speech-bubble .emoji {
+    font-size: 20px;
+    margin-right: 8px;
+    vertical-align: middle;
+    display: inline-block;
+    animation: emojiPop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes emojiPop {
+    0% { transform: scale(0); }
+    50% { transform: scale(1.2); }
+    100% { transform: scale(1); }
+}
+
+/* 气泡中的文字 */
+.speech-bubble .text {
+    display: inline-block;
+    vertical-align: middle;
+    font-weight: 500;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+    animation: textFadeIn 0.3s ease-out;
+}
+
+@keyframes textFadeIn {
+    0% { opacity: 0; transform: translateY(5px); }
+    100% { opacity: 1; transform: translateY(0); }
+}
+
+/* 气泡出现动画 */
+@keyframes bubbleAppear {
+    0% {
+        transform: scale(0.5) translateY(20px);
+        opacity: 0;
+    }
+    100% {
+        transform: scale(1) translateY(0);
+        opacity: 1;
+    }
+}
+
+/* 气泡消失动画 */
+.speech-bubble.fade-out {
+    animation: bubbleFadeOut 0.3s ease-out forwards;
+}
+
+@keyframes bubbleFadeOut {
+    0% {
+        transform: scale(1) translateY(0);
+        opacity: 1;
+    }
+    100% {
+        transform: scale(0.8) translateY(-20px);
+        opacity: 0;
+    }
+}
+
+/* 触摸涟漪效果 */
+.robot::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    background: radial-gradient(circle, rgba(255,255,255,0.6) 0%, rgba(255,255,255,0) 70%);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    opacity: 0;
+    pointer-events: none;
+    z-index: 1;
+}
+
+.robot.touched::after {
+    animation: ripple 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes ripple {
+    0% {
+        width: 0;
+        height: 0;
+        opacity: 0.5;
+    }
+    50% {
+        opacity: 0.3;
+    }
+    100% {
+        width: 200px;
+        height: 200px;
+        opacity: 0;
+    }
+}
+
+/* 移动端适配 */
+@media (max-width: 768px) {
+    .robot {
+        transform-origin: center;
+        touch-action: none;
+    }
+    
+    .speech-bubble {
+        padding: 10px 16px;
+        font-size: 13px;
+        max-width: 200px;
+    }
+    
+    .speech-bubble .emoji {
+        font-size: 18px;
+    }
+    
+    .robot::after {
+        width: 150px;
+        height: 150px;
+    }
+} 
