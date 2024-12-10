@@ -306,13 +306,13 @@ class VoiceAssistant {
         const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
         
         try {
+            // 初始化语音识别（所有平台）
+            if ('webkitSpeechRecognition' in window) {
+                this.initializeSpeechRecognition();
+            }
+            
             // 移动端特别处理
             if (isMobile) {
-                // 确保语音识别已初始化
-                if (!this.recognition && 'webkitSpeechRecognition' in window) {
-                    this.initializeSpeechRecognition();
-                }
-                
                 // 确保语音合成已初始化
                 if (window.speechSynthesis) {
                     // 强制加载声音列表
@@ -593,7 +593,7 @@ class VoiceAssistant {
                 errorMessage = '哎呀，网络不太好，我们稍后再聊好吗？';
                 this.setRobotMood('surprised');
             } else if (error.message.includes('请求太频繁')) {
-                errorMessage = '宝贝我们聊得太快了，休息一下继续吧~';
+                errorMessage = '宝贝我们聊得���快了，休息一下继续吧~';
                 this.setRobotMood('shy');
             } else {
                 errorMessage = '抱歉宝贝，我遇到了一些小问题，能稍等下吗？';
@@ -797,7 +797,7 @@ class VoiceAssistant {
                 return applyMixedAnimation();
             })
             .catch(error => {
-                console.error('情��混合动画出错:', error);
+                console.error('情感混合动画出错:', error);
                 this.clearEmotionState();
             });
     }
@@ -1180,7 +1180,7 @@ class VoiceAssistant {
         }
     }
 
-    // 添加取消当前语音的方法
+    // 添加��消当前语音的方法
     cancelCurrentSpeech() {
         if (this.synthesis.speaking) {
             this.synthesis.cancel();
@@ -1201,29 +1201,41 @@ class VoiceAssistant {
         
         if (this.recognition) {
             try {
-                // 在移动端，尝试重新初始化语音识别
-                if (isMobile) {
-                    this.recognition = new webkitSpeechRecognition();
-                    this.recognition.continuous = false;
-                    this.recognition.interimResults = false;
-                    this.recognition.lang = 'zh-CN';
-                    this.recognition.maxAlternatives = 1;
-                    
-                    // 重新绑定事件
-                    this.recognition.onstart = () => this.handleRecognitionStart();
-                    this.recognition.onresult = (event) => this.handleRecognitionResult(event);
-                    this.recognition.onerror = (event) => this.handleRecognitionError(event);
-                    this.recognition.onend = () => this.handleRecognitionEnd();
-                }
-                
-                // 启动语音识别
-                this.recognition.start();
-                this.isListening = true;
-                this.updateControls();
-                
+                // 统一处理麦克风权限请求
+                navigator.mediaDevices.getUserMedia({ audio: true })
+                    .then(() => {
+                        if (isMobile) {
+                            // 移动端处理：重新初始化语音识别
+                            this.recognition = new webkitSpeechRecognition();
+                            this.recognition.continuous = false;
+                            this.recognition.interimResults = false;
+                            this.recognition.lang = 'zh-CN';
+                            this.recognition.maxAlternatives = 1;
+                            
+                            // 重新绑定事件
+                            this.recognition.onstart = () => {
+                                this.handleRecognitionStart();
+                                this.showMessage('正在听您说话...', 'bot');
+                            };
+                            this.recognition.onresult = (event) => this.handleRecognitionResult(event);
+                            this.recognition.onerror = (event) => this.handleRecognitionError(event);
+                            this.recognition.onend = () => this.handleRecognitionEnd();
+                        }
+                        
+                        // 启动语音识别
+                        this.recognition.start();
+                        this.isListening = true;
+                        this.updateControls();
+                    })
+                    .catch((error) => {
+                        console.error('麦克风权限请求失败:', error);
+                        this.showMessage('请允许访问麦克风以启用语音功能', 'bot');
+                        this.speak('请允许访问麦克风以启用语音功能');
+                        this.isListening = false;
+                        this.updateControls();
+                    });
             } catch (error) {
                 console.error('启动语音识别失败:', error);
-                // 显示友好的错误提示
                 this.showMessage('语音识别启动失败，请确保已授予麦克风权限，或尝试刷新页面', 'bot');
                 this.speak('语音识别启动失败，请确保已授予麦克风权限，或尝试刷新页面');
                 this.isListening = false;
@@ -1309,41 +1321,41 @@ class VoiceAssistant {
                 this.recognition.interimResults = false;
                 this.recognition.lang = 'zh-CN';
                 
+                // 基础事件绑定（所有平台通用）
+                this.recognition.onstart = () => {
+                    this.handleRecognitionStart();
+                    // 在开始识别时显示状态
+                    this.showMessage('正在听您说话...', 'bot');
+                };
+                
+                this.recognition.onresult = (event) => this.handleRecognitionResult(event);
+                this.recognition.onend = () => this.handleRecognitionEnd();
+                
                 // 移动端特别处理
                 if (isMobile) {
                     this.recognition.continuous = false;
                     this.recognition.interimResults = false;
                     this.recognition.maxAlternatives = 1;
                     
-                    // 在移动端，添加更多的错误处理
+                    // 移动端错误处理
                     this.recognition.onerror = (event) => {
-                        if (event.error === 'not-allowed') {
-                            // 尝试请求麦克风权限
-                            navigator.mediaDevices.getUserMedia({ audio: true })
-                                .then(() => {
-                                    this.handleRecognitionError(event);
-                                })
-                                .catch(() => {
-                                    this.showMessage('请允许访问麦克风以启用语音功能', 'bot');
-                                    this.speak('请允许访问麦克风以启用语音功能');
-                                });
+                        if (event.error === 'not-allowed' || event.error === 'permission-denied') {
+                            this.showMessage('需要麦克风权限才能进行语音对话，请点击允许', 'bot');
+                            this.speak('需要麦克风权限才能进行语音对话，请点击允许');
                         } else {
                             this.handleRecognitionError(event);
                         }
                     };
                 } else {
+                    // 桌面端错误处理
                     this.recognition.onerror = (event) => this.handleRecognitionError(event);
                 }
                 
-                this.recognition.onstart = () => this.handleRecognitionStart();
-                this.recognition.onresult = (event) => this.handleRecognitionResult(event);
-                this.recognition.onend = () => this.handleRecognitionEnd();
-                
             } catch (error) {
                 console.error('语音识别初始化错误:', error);
-                // 移动端显示友好提示
                 if (isMobile) {
-                    this.showMessage('语音功能可能受限，但您仍可以使用文字交互', 'bot');
+                    this.showMessage('语音功能初始化失败，请确保允许使用麦克风', 'bot');
+                    this.speak('语音功能初始化失败，请确保允许使用麦克风');
                 }
             }
         } else {
@@ -1649,8 +1661,8 @@ class VoiceAssistant {
                     },
                     {
                         mood: 'love',
-                        sound: '这样摸着我，感觉整个人都要化掉了~',
-                        emoji: ['❤️', '💕', '✨']
+                        sound: '这样摸��我，感觉整个人都要化掉了~',
+                        emoji: ['���️', '💕', '✨']
                     },
                     {
                         mood: 'shy',
@@ -1774,7 +1786,7 @@ class VoiceAssistant {
                     {
                         mood: 'shy',
                         sound: '呜呜~被你欺负了啦~',
-                        emoji: ['🥺', '💗', '✨']
+                        emoji: ['🥺', '��', '✨']
                     },
                     {
                         mood: 'happy',
