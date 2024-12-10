@@ -327,7 +327,7 @@ class VoiceAssistant {
                 this.initializeEventListeners();
                 
                 // 显示欢迎消息
-                const welcomeMessage = '亲爱的，我终于等到你了！我是你的男宝宝，很高兴能陪在你身边。今天过得怎么样？不累吧？';
+                const welcomeMessage = '亲爱的，我终于等到你了！我是你的男朋友，很高兴能陪在你身边。今天过得怎么样？不累吧？';
                 this.showMessage(welcomeMessage, 'bot');
                 
                 // 移动端延迟播放语音
@@ -454,7 +454,7 @@ class VoiceAssistant {
                     } else if (response.status === 429) {
                         throw new Error('请求太频繁，请稍后再试');
                     } else if (response.status === 503) {
-                        throw new Error('服务暂时不可用，请稍后再试');
+                        throw new Error('服���暂时不可用，请稍后再试');
                     } else {
                         throw new Error(errorData.error?.message || `API请求失败: ${response.status}`);
                     }
@@ -797,7 +797,7 @@ class VoiceAssistant {
                 return applyMixedAnimation();
             })
             .catch(error => {
-                console.error('情感混合动画出错:', error);
+                console.error('情��混合动画出错:', error);
                 this.clearEmotionState();
             });
     }
@@ -1196,10 +1196,39 @@ class VoiceAssistant {
         // 取消当前的语音播放
         this.cancelCurrentSpeech();
         
+        // 检查是否是移动设备
+        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+        
         if (this.recognition) {
-            this.recognition.start();
-            this.isListening = true;
-            this.updateControls();
+            try {
+                // 在移动端，尝试重新初始化语音识别
+                if (isMobile) {
+                    this.recognition = new webkitSpeechRecognition();
+                    this.recognition.continuous = false;
+                    this.recognition.interimResults = false;
+                    this.recognition.lang = 'zh-CN';
+                    this.recognition.maxAlternatives = 1;
+                    
+                    // 重新绑定事件
+                    this.recognition.onstart = () => this.handleRecognitionStart();
+                    this.recognition.onresult = (event) => this.handleRecognitionResult(event);
+                    this.recognition.onerror = (event) => this.handleRecognitionError(event);
+                    this.recognition.onend = () => this.handleRecognitionEnd();
+                }
+                
+                // 启动语音识别
+                this.recognition.start();
+                this.isListening = true;
+                this.updateControls();
+                
+            } catch (error) {
+                console.error('启动语音识别失败:', error);
+                // 显示友好的错误提示
+                this.showMessage('语音识别启动失败，请确保已授予麦克风权限，或尝试刷新页面', 'bot');
+                this.speak('语音识别启动失败，请确保已授予麦克风权限，或尝试刷新页面');
+                this.isListening = false;
+                this.updateControls();
+            }
         }
     }
     
@@ -1285,11 +1314,29 @@ class VoiceAssistant {
                     this.recognition.continuous = false;
                     this.recognition.interimResults = false;
                     this.recognition.maxAlternatives = 1;
+                    
+                    // 在移动端，添加更多的错误处理
+                    this.recognition.onerror = (event) => {
+                        if (event.error === 'not-allowed') {
+                            // 尝试请求麦克风权限
+                            navigator.mediaDevices.getUserMedia({ audio: true })
+                                .then(() => {
+                                    this.handleRecognitionError(event);
+                                })
+                                .catch(() => {
+                                    this.showMessage('请允许访问麦克风以启用语音功能', 'bot');
+                                    this.speak('请允许访问麦克风以启用语音功能');
+                                });
+                        } else {
+                            this.handleRecognitionError(event);
+                        }
+                    };
+                } else {
+                    this.recognition.onerror = (event) => this.handleRecognitionError(event);
                 }
                 
                 this.recognition.onstart = () => this.handleRecognitionStart();
                 this.recognition.onresult = (event) => this.handleRecognitionResult(event);
-                this.recognition.onerror = (event) => this.handleRecognitionError(event);
                 this.recognition.onend = () => this.handleRecognitionEnd();
                 
             } catch (error) {
@@ -1332,9 +1379,33 @@ class VoiceAssistant {
     handleRecognitionError(event) {
         console.error('Speech Recognition Error:', event.error);
         this.setStatus('出错了');
-        const errorMessage = '语音识别出错，请重试';
+        let errorMessage;
+        
+        // 根据不同错误类型显示不同提示
+        switch (event.error) {
+            case 'not-allowed':
+            case 'permission-denied':
+                errorMessage = '无法访问麦克风，请确保已授予麦克风权限';
+                break;
+            case 'no-speech':
+                errorMessage = '没有检测到语音，请重试';
+                break;
+            case 'network':
+                errorMessage = '网络连接不稳定，请检查网络后重试';
+                break;
+            case 'aborted':
+                errorMessage = '语音识别被中断';
+                break;
+            default:
+                errorMessage = '语音识别出错，请重试';
+        }
+        
         this.showMessage(errorMessage, 'bot');
         this.speak(errorMessage);
+        
+        // 重置状态
+        this.isListening = false;
+        this.updateControls();
     }
     
     handleRecognitionEnd() {
@@ -1655,7 +1726,7 @@ class VoiceAssistant {
                     }
                 ]);
             } else {
-                // 中间脸部区��
+                // 中间脸部区域
                 return getRandomResponse([
                     {
                         mood: 'love',
