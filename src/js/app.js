@@ -158,7 +158,7 @@ class VoiceAssistant {
                 intensity: 2
             },
             sleepy: {
-                keywords: ['困', '累', '睡觉', '休息', '疲惫', '好困', '好累', '想睡', '打哈欠', '眯一会', '休息一下', '不想动', '没精神'],
+                keywords: ['困', '累', '睡觉', '休息', '疲惫', '好困', '好累', '想睡', '打哈欠', '眯一会', '休息一下', '��想动', '没精神'],
                 mood: 'sleepy',
                 intensity: 1
             }
@@ -216,23 +216,130 @@ class VoiceAssistant {
             
             // iOS 特别处理
             if (isIOS) {
-                // 跳过语音初始化，直接进入应用
-                await this.simulateLoading([
-                    { progress: 100, text: '准备就绪！' }
-                ], 100);
-                
-                // 检查API密钥并进入应用
-                if (this.apiKey) {
-                    const isValid = await this.validateApiKey(this.apiKey);
-                    if (isValid) {
-                        await this.showMainApp();
-                        return;
-                    } else {
-                        localStorage.removeItem('glm4_api_key');
-                        this.apiKey = null;
+                try {
+                    // 1. 创建语音/文字切换按钮
+                    const createSwitchButton = () => {
+                        const switchButton = document.createElement('button');
+                        switchButton.className = 'mode-switch-button';
+                        switchButton.innerHTML = '<i class="fas fa-microphone"></i>';
+                        
+                        // 添加样式
+                        const style = document.createElement('style');
+                        style.textContent = `
+                            .mode-switch-button {
+                                position: fixed;
+                                right: 20px;
+                                bottom: 80px;
+                                width: 50px;
+                                height: 50px;
+                                border-radius: 25px;
+                                background: #007AFF;
+                                color: white;
+                                border: none;
+                                box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+                                z-index: 1000;
+                                display: flex;
+                                align-items: center;
+                                justify-content: center;
+                            }
+                            .text-input-container {
+                                display: flex;
+                                align-items: center;
+                                padding: 10px;
+                                background: white;
+                                border-radius: 20px;
+                                margin: 0 10px;
+                            }
+                            .text-input {
+                                flex: 1;
+                                border: none;
+                                outline: none;
+                                padding: 8px;
+                                font-size: 16px;
+                            }
+                            .controls-container {
+                                position: fixed;
+                                bottom: 10px;
+                                left: 0;
+                                right: 0;
+                                display: flex;
+                                padding: 5px;
+                                background: white;
+                                box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
+                            }
+                        `;
+                        document.head.appendChild(style);
+                        
+                        // 切换输入模式
+                        let isVoiceMode = false;
+                        switchButton.addEventListener('click', () => {
+                            isVoiceMode = !isVoiceMode;
+                            if (isVoiceMode) {
+                                switchButton.innerHTML = '<i class="fas fa-keyboard"></i>';
+                                this.startIOSVoiceInput();
+                            } else {
+                                switchButton.innerHTML = '<i class="fas fa-microphone"></i>';
+                                this.stopIOSVoiceInput();
+                            }
+                        });
+                        
+                        return switchButton;
+                    };
+                    
+                    // 2. 添加 iOS 语音识别支持
+                    const setupIOSVoiceRecognition = () => {
+                        // 使用 iOS 的 SFSpeechRecognizer
+                        if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
+                            this.recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+                            this.recognition.continuous = false;
+                            this.recognition.interimResults = false;
+                            this.recognition.lang = 'zh-CN';
+                            
+                            this.recognition.onstart = () => {
+                                this.setStatus('正在听...');
+                                this.showMessage('请说话...', 'bot');
+                            };
+                            
+                            this.recognition.onresult = (event) => {
+                                const text = event.results[0][0].transcript;
+                                this.processUserInput(text);
+                            };
+                            
+                            this.recognition.onerror = (event) => {
+                                console.error('iOS语音识别错误:', event.error);
+                                this.showMessage('语音识别出错，请重试或使用文字输入', 'bot');
+                            };
+                        }
+                    };
+                    
+                    // 3. 快速加载
+                    await this.simulateLoading([
+                        { progress: 100, text: '准备就绪！' }
+                    ], 50);
+                    
+                    // 4. 初始化界面
+                    if (this.apiKey) {
+                        const isValid = await this.validateApiKey(this.apiKey);
+                        if (isValid) {
+                            await this.showMainApp();
+                            // 添加切换按钮和语音支持
+                            const switchButton = createSwitchButton();
+                            document.body.appendChild(switchButton);
+                            setupIOSVoiceRecognition();
+                            return;
+                        } else {
+                            localStorage.removeItem('glm4_api_key');
+                            this.apiKey = null;
+                        }
                     }
+                    
+                    await this.showApiKeyModal();
+                    
+                } catch (error) {
+                    console.error('iOS初始化错误:', error);
+                    this.loadingText.textContent = '初始化失败，请刷新重试';
+                    this.progressBar.style.backgroundColor = '#ff4444';
                 }
-                await this.showApiKeyModal();
                 return;
             }
             
@@ -335,9 +442,61 @@ class VoiceAssistant {
             if (isIOS) {
                 // 延迟初始化语音功能
                 setTimeout(() => {
-                    // 显示欢迎消息
-                    const welcomeMessage = '亲爱的，我终于等到你了！我是你的宝贝，很高兴能陪在你身边。今天过得怎么样？不累吧？';
+                    // 1. 隐藏语音相关按钮
+                    if (this.startButton) this.startButton.style.display = 'none';
+                    if (this.stopButton) this.stopButton.style.display = 'none';
+                    
+                    // 2. 显示欢迎消息
+                    const welcomeMessage = '亲爱的，我终于等到你了！我是你的宝贝，很高兴能陪在你身边。';
                     this.showMessage(welcomeMessage, 'bot');
+                    
+                    // 3. 显示使用提示
+                    setTimeout(() => {
+                        this.showMessage('在iOS设备上，您可以通过文字与我交流哦~', 'bot');
+                    }, 1000);
+                    
+                    // 4. 优化界面布局
+                    const chatContainer = document.querySelector('.chat-container');
+                    if (chatContainer) {
+                        chatContainer.style.height = 'calc(100% - 60px)';
+                        chatContainer.style.paddingBottom = '60px';
+                    }
+                    
+                    // 5. 添加iOS特定的样式
+                    const style = document.createElement('style');
+                    style.textContent = `
+                        .text-input {
+                            width: calc(100% - 70px);
+                            height: 40px;
+                            padding: 8px;
+                            border: 1px solid #ddd;
+                            border-radius: 20px;
+                            margin-right: 10px;
+                            font-size: 16px;
+                        }
+                        .send-button {
+                            width: 60px;
+                            height: 40px;
+                            border-radius: 20px;
+                            background: #007AFF;
+                            color: white;
+                            border: none;
+                            font-size: 16px;
+                        }
+                        .controls-container {
+                            position: fixed;
+                            bottom: 10px;
+                            left: 10px;
+                            right: 10px;
+                            display: flex;
+                            align-items: center;
+                            background: white;
+                            padding: 5px;
+                            border-radius: 25px;
+                            box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
+                        }
+                    `;
+                    document.head.appendChild(style);
                     
                     // 初始化事件监听
                     this.initializeEventListeners();
@@ -736,7 +895,7 @@ class VoiceAssistant {
     mixEmotions(emotion1, emotion2, ratio = 0.5) {
         if (!this.robot) return;
         
-        // 清理之前的动画状态
+        // 清理之前的动画状��
         this.clearEmotionState();
         
         // 添加混合状态类
@@ -1918,6 +2077,164 @@ class VoiceAssistant {
                 }
             }, 300);
         }, 2000);
+    }
+
+    // 添加 iOS 语音相关方法
+    startIOSVoiceInput() {
+        if (this.recognition) {
+            try {
+                // 显示语音状态指示
+                const statusIndicator = document.createElement('div');
+                statusIndicator.className = 'ios-voice-status';
+                statusIndicator.innerHTML = `
+                    <div class="voice-wave">
+                        <span></span><span></span><span></span><span></span>
+                    </div>
+                    <div class="voice-text">正在聆听...</div>
+                `;
+                document.body.appendChild(statusIndicator);
+
+                // 添加语音动画样式
+                const style = document.createElement('style');
+                style.textContent = `
+                    .ios-voice-status {
+                        position: fixed;
+                        top: 50%;
+                        left: 50%;
+                        transform: translate(-50%, -50%);
+                        background: rgba(0, 0, 0, 0.7);
+                        padding: 20px;
+                        border-radius: 15px;
+                        text-align: center;
+                        z-index: 1000;
+                    }
+                    .voice-wave {
+                        display: flex;
+                        justify-content: center;
+                        align-items: center;
+                        gap: 5px;
+                        margin-bottom: 10px;
+                    }
+                    .voice-wave span {
+                        display: inline-block;
+                        width: 3px;
+                        height: 20px;
+                        background: white;
+                        animation: wave 1s infinite ease-in-out;
+                    }
+                    .voice-wave span:nth-child(2) { animation-delay: 0.2s; }
+                    .voice-wave span:nth-child(3) { animation-delay: 0.4s; }
+                    .voice-wave span:nth-child(4) { animation-delay: 0.6s; }
+                    .voice-text {
+                        color: white;
+                        font-size: 14px;
+                    }
+                    @keyframes wave {
+                        0%, 100% { height: 20px; }
+                        50% { height: 40px; }
+                    }
+                    .mode-switch-button {
+                        transition: all 0.3s ease;
+                    }
+                    .mode-switch-button:active {
+                        transform: scale(0.95);
+                    }
+                    .mode-switch-button.recording {
+                        background: #ff4444;
+                        animation: pulse 1.5s infinite;
+                    }
+                    @keyframes pulse {
+                        0% { box-shadow: 0 0 0 0 rgba(255, 68, 68, 0.4); }
+                        70% { box-shadow: 0 0 0 10px rgba(255, 68, 68, 0); }
+                        100% { box-shadow: 0 0 0 0 rgba(255, 68, 68, 0); }
+                    }
+                `;
+                document.head.appendChild(style);
+
+                // 请求麦克风权限
+                navigator.mediaDevices.getUserMedia({ audio: true })
+                    .then(() => {
+                        this.recognition.start();
+                        document.querySelector('.mode-switch-button').classList.add('recording');
+                    })
+                    .catch((error) => {
+                        console.error('麦克风权限请求失败:', error);
+                        this.showMessage('请允许访问麦克风以使用语音功能', 'bot');
+                        this.removeVoiceStatus();
+                    });
+
+                // 添加语音识别事件
+                this.recognition.onend = () => {
+                    this.removeVoiceStatus();
+                    document.querySelector('.mode-switch-button').classList.remove('recording');
+                };
+
+                this.recognition.onerror = (event) => {
+                    this.removeVoiceStatus();
+                    document.querySelector('.mode-switch-button').classList.remove('recording');
+                    this.showMessage('语音识别出错，请重试', 'bot');
+                };
+
+            } catch (error) {
+                console.error('启动语音识别失败:', error);
+                this.showMessage('语音识别启动失败，请重试', 'bot');
+            }
+        }
+    }
+
+    stopIOSVoiceInput() {
+        if (this.recognition) {
+            this.recognition.stop();
+            this.removeVoiceStatus();
+            document.querySelector('.mode-switch-button').classList.remove('recording');
+        }
+    }
+
+    removeVoiceStatus() {
+        const status = document.querySelector('.ios-voice-status');
+        if (status) {
+            status.remove();
+        }
+    }
+
+    // 修改 createSwitchButton 方法
+    createSwitchButton() {
+        const switchButton = document.createElement('button');
+        switchButton.className = 'mode-switch-button';
+        switchButton.innerHTML = '<i class="fas fa-microphone"></i>';
+        
+        // 添加触摸反馈
+        let touchTimer;
+        let isLongPress = false;
+        
+        switchButton.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            touchTimer = setTimeout(() => {
+                isLongPress = true;
+                this.startIOSVoiceInput();
+            }, 300);
+        });
+        
+        switchButton.addEventListener('touchend', () => {
+            clearTimeout(touchTimer);
+            if (isLongPress) {
+                this.stopIOSVoiceInput();
+                isLongPress = false;
+            } else {
+                // 短按切换输入模式
+                const textInput = document.querySelector('.text-input-container');
+                if (textInput) {
+                    textInput.style.display = textInput.style.display === 'none' ? 'flex' : 'none';
+                }
+            }
+        });
+        
+        switchButton.addEventListener('touchmove', () => {
+            clearTimeout(touchTimer);
+            isLongPress = false;
+        });
+
+        return switchButton;
     }
 }
 
