@@ -1,0 +1,186 @@
+/* 说话动画 */
+@keyframes speak {
+    0%, 100% { 
+        height: 20px; 
+        border-radius: 0 0 30px 30px; 
+        transform: scaleX(1);
+    }
+    50% { 
+        height: 25px; 
+        border-radius: 0 0 40px 40px;
+        transform: scaleX(1.1);
+    }
+}
+
+/* 消息动画 */
+@keyframes messageTyping {
+    0% { 
+        opacity: 0; 
+        transform: translateY(10px); 
+    }
+    100% { 
+        opacity: 1; 
+        transform: translateY(0); 
+    }
+}
+
+/* 技术圆圈动画 */
+@keyframes techPulse {
+    0%, 100% {
+        transform: scale(1);
+        opacity: 0.5;
+    }
+    50% {
+        transform: scale(1.1);
+        opacity: 0.7;
+    }
+}
+
+/* 说话时的头部轻微摇动 */
+@keyframes headBob {
+    0%, 100% {
+        transform: translateY(0) rotate(0deg);
+    }
+    25% {
+        transform: translateY(-2px) rotate(-1deg);
+    }
+    75% {
+        transform: translateY(2px) rotate(1deg);
+    }
+}
+
+/* 说话时的身体轻微晃动 */
+@keyframes bodyWiggle {
+    0%, 100% {
+        transform: translateX(0);
+    }
+    25% {
+        transform: translateX(-1px) rotate(-0.5deg);
+    }
+    75% {
+        transform: translateX(1px) rotate(0.5deg);
+    }
+}
+
+/* 眨眼动画 */
+@keyframes blink {
+    0%, 90%, 100% {
+        transform: scaleY(1);
+    }
+    95% {
+        transform: scaleY(0.1);
+    }
+}
+
+/* 应用动画的样式 */
+.tech-circle {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    background: linear-gradient(135deg, 
+        rgba(var(--primary-rgb), 0.1) 0%,
+        rgba(var(--primary-rgb), 0.05) 100%
+    );
+    animation: techPulse 2s ease-in-out infinite;
+}
+
+.bot-message .message-content {
+    animation: messageTyping 0.3s ease-out forwards;
+}
+
+/* 说话时的动画组合 */
+.robot.speaking .mouth {
+    animation: speak 0.3s infinite;
+    transform-origin: center;
+}
+
+.robot.speaking .robot-head {
+    animation: headBob 2s ease-in-out infinite;
+}
+
+.robot.speaking .robot-body {
+    animation: bodyWiggle 2s ease-in-out infinite;
+}
+
+.robot.speaking .eye {
+    animation: blink 3s ease-in-out infinite;
+}
+
+/* 触摸反馈动画 */
+@keyframes touchPulse {
+    0% {
+        transform: scale(0.95);
+    }
+    50% {
+        transform: scale(1.02);
+    }
+    100% {
+        transform: scale(1);
+    }
+}
+
+.robot.touched {
+    animation: touchPulse 0.3s ease-out;
+}
+
+/* 情绪切换动画 */
+@keyframes moodTransition {
+    0% {
+        filter: brightness(1) hue-rotate(0deg);
+    }
+    50% {
+        filter: brightness(1.2) hue-rotate(10deg);
+    }
+    100% {
+        filter: brightness(1) hue-rotate(0deg);
+    }
+}
+
+.robot.mood-change {
+    animation: moodTransition 0.5s ease-in-out;
+}
+
+/* 语音波纹效果 */
+@keyframes voiceWave {
+    0% {
+        transform: scale(1);
+        opacity: 0.5;
+    }
+    100% {
+        transform: scale(1.5);
+        opacity: 0;
+    }
+}
+
+.robot.speaking::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    background: radial-gradient(circle, 
+        rgba(var(--primary-rgb), 0.1) 0%,
+        rgba(var(--primary-rgb), 0) 70%
+    );
+    transform: translate(-50%, -50%);
+    animation: voiceWave 2s ease-out infinite;
+    pointer-events: none;
+    z-index: -1;
+}
+
+/* 平滑过渡 */
+.robot * {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 说话时的表情变化 */
+.robot.speaking .expression {
+    transition: transform 0.3s ease;
+}
+
+.robot.speaking .expression:hover {
+    transform: scale(1.1);
+} 

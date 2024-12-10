@@ -1,0 +1,151 @@
+/* 动画修复 */
+@keyframes speak {
+    0%, 100% { 
+        height: 20px; 
+        border-radius: 0 0 30px 30px; 
+    }
+    50% { 
+        height: 25px; 
+        border-radius: 0 0 40px 40px; 
+    }
+}
+
+/* 消息动画 */
+@keyframes messageTyping {
+    0% { 
+        opacity: 0; 
+        transform: translateY(10px); 
+    }
+    100% { 
+        opacity: 1; 
+        transform: translateY(0); 
+    }
+}
+
+/* 消息样式 */
+.bot-message .message-content {
+    animation: messageTyping 0.3s ease-out forwards;
+}
+
+/* 机器人说话动画 */
+.robot.speaking .mouth {
+    animation: speak 0.3s infinite;
+}
+
+/* 技术圆圈 */
+.tech-circle {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    background: linear-gradient(135deg, 
+        rgba(var(--primary-rgb), 0.1) 0%,
+        rgba(var(--primary-rgb), 0.05) 100%
+    );
+    animation: techPulse 2s ease-in-out infinite;
+}
+
+/* 气泡对话框样式优化 */
+.speech-bubble {
+    position: absolute;
+    background: rgba(255, 255, 255, 0.95);
+    padding: 12px 20px;
+    border-radius: 20px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    z-index: 1000;
+    max-width: 250px;
+    backdrop-filter: blur(10px);
+    border: 2px solid var(--primary-color);
+    color: #333;
+    font-size: 14px;
+    line-height: 1.4;
+    text-align: center;
+    transform-origin: bottom center;
+    animation: bubbleAppear 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 不同情绪的气泡样式 */
+.speech-bubble.love {
+    background: linear-gradient(135deg, rgba(255, 182, 193, 0.95), rgba(255, 255, 255, 0.95));
+    border-color: #ff69b4;
+    color: #d4367d;
+}
+
+.speech-bubble.happy {
+    background: linear-gradient(135deg, rgba(255, 253, 208, 0.95), rgba(255, 255, 255, 0.95));
+    border-color: #ffd700;
+    color: #b8860b;
+}
+
+.speech-bubble.shy {
+    background: linear-gradient(135deg, rgba(255, 218, 224, 0.95), rgba(255, 255, 255, 0.95));
+    border-color: #ffb6c1;
+    color: #c71585;
+}
+
+.speech-bubble.surprised {
+    background: linear-gradient(135deg, rgba(176, 224, 230, 0.95), rgba(255, 255, 255, 0.95));
+    border-color: #87ceeb;
+    color: #4169e1;
+}
+
+.speech-bubble.excited {
+    background: linear-gradient(135deg, rgba(255, 192, 203, 0.95), rgba(255, 255, 255, 0.95));
+    border-color: #ff69b4;
+    color: #c71585;
+}
+
+/* 气泡箭头 */
+.speech-bubble::after {
+    content: '';
+    position: absolute;
+    bottom: -10px;
+    left: 50%;
+    transform: translateX(-50%);
+    border-width: 10px 10px 0;
+    border-style: solid;
+    border-color: var(--primary-color) transparent transparent;
+}
+
+/* 气泡中的表情符号 */
+.speech-bubble .emoji {
+    font-size: 20px;
+    margin-right: 8px;
+    vertical-align: middle;
+}
+
+/* 气泡中的文字 */
+.speech-bubble .text {
+    display: inline-block;
+    vertical-align: middle;
+    font-weight: 500;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+/* 气泡出现动画 */
+@keyframes bubbleAppear {
+    0% {
+        transform: scale(0.5) translateY(20px);
+        opacity: 0;
+    }
+    100% {
+        transform: scale(1) translateY(0);
+        opacity: 1;
+    }
+}
+
+/* 气泡消失动画 */
+.speech-bubble.fade-out {
+    animation: bubbleFadeOut 0.3s ease-out forwards;
+}
+
+@keyframes bubbleFadeOut {
+    0% {
+        transform: scale(1) translateY(0);
+        opacity: 1;
+    }
+    100% {
+        transform: scale(0.8) translateY(-20px);
+        opacity: 0;
+    }
+}
