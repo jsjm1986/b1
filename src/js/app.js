@@ -214,33 +214,54 @@ class VoiceAssistant {
             const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
             const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
             
-            // 移动端特别处理
-            if (isMobile) {
-                // 预初始化语音识别（移动端可能需要用户交互才能初始化）
+            // iOS 特别处理
+            if (isIOS) {
+                // 延迟初始化语音功能
                 if ('webkitSpeechRecognition' in window) {
+                    // 仅创建实例，不进行初始化
                     this.recognition = new webkitSpeechRecognition();
-                    this.recognition.continuous = false;
-                    this.recognition.interimResults = false;
                 }
                 
-                // 预初始化语音合成
+                // 预加载语音合成
                 if (window.speechSynthesis) {
-                    window.speechSynthesis.cancel(); // 清除可能的挂起状态
+                    window.speechSynthesis.cancel();
+                    // 强制加载声音列表
+                    window.speechSynthesis.getVoices();
                 }
-            }
+                
+                // 快速完成加载流程
+                await this.simulateLoading([
+                    { progress: 50, text: '正在初始化...' },
+                    { progress: 100, text: '准备就绪！' }
+                ], 100);
+            } else {
+                // 移动端特别处理
+                if (isMobile) {
+                    // 预初始化语音识别
+                    if ('webkitSpeechRecognition' in window) {
+                        this.recognition = new webkitSpeechRecognition();
+                        this.recognition.continuous = false;
+                        this.recognition.interimResults = false;
+                    }
+                    
+                    // 预初始化语音合成
+                    if (window.speechSynthesis) {
+                        window.speechSynthesis.cancel();
+                    }
+                }
 
-            // 模拟加载进度，移动端加快加载速度
-            await this.simulateLoading([
-                { progress: 20, text: '正在初始化系统...' },
-                { progress: 40, text: '正在加载语音模块...' },
-                { progress: 60, text: '正在连接AI服务...' },
-                { progress: 80, text: '正在准备界面...' },
-                { progress: 100, text: '准备就绪！' }
-            ], isMobile ? 100 : 500);
+                // 正常加载流程
+                await this.simulateLoading([
+                    { progress: 20, text: '正在初始化系统...' },
+                    { progress: 40, text: '正在加载语音模块...' },
+                    { progress: 60, text: '正在连接AI服务...' },
+                    { progress: 80, text: '正在准备界面...' },
+                    { progress: 100, text: '准备就绪！' }
+                ], isMobile ? 100 : 500);
+            }
             
             // 检查是否有保存的API密钥
             if (this.apiKey) {
-                // 验证保存的API密钥
                 const isValid = await this.validateApiKey(this.apiKey);
                 if (isValid) {
                     await this.showMainApp();
@@ -262,6 +283,14 @@ class VoiceAssistant {
                 '初始化失败，请刷新页面重试';
             this.loadingText.textContent = errorMessage;
             this.progressBar.style.backgroundColor = '#ff4444';
+            
+            // iOS 错误特别处理
+            if (isIOS) {
+                // 尝试直接显示 API 输入界面
+                setTimeout(() => {
+                    this.showApiKeyModal().catch(console.error);
+                }, 1000);
+            }
         }
     }
     
@@ -306,40 +335,37 @@ class VoiceAssistant {
         const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
         
         try {
-            // 初始化语音识别（所有平台）
-            if ('webkitSpeechRecognition' in window) {
-                this.initializeSpeechRecognition();
+            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+            
+            if (isIOS) {
+                // iOS 延迟初始化语音识别
+                setTimeout(() => {
+                    if ('webkitSpeechRecognition' in window) {
+                        this.initializeSpeechRecognition();
+                    }
+                }, 1000);
+            } else {
+                // 其他平台正常初始化
+                if ('webkitSpeechRecognition' in window) {
+                    this.initializeSpeechRecognition();
+                }
             }
             
-            // 移动端特别处理
+            // 初始化事件监听
+            this.initializeEventListeners();
+            
+            // 显示欢迎消息
+            const welcomeMessage = '亲爱的，我终于等到你了！我是你的宝贝，很高兴能陪在你身边。今天过得怎么样？不累吧？';
+            this.showMessage(welcomeMessage, 'bot');
+            
+            // 移动端延迟播放语音
             if (isMobile) {
-                // 确保语音合成已初始化
-                if (window.speechSynthesis) {
-                    // 强制加载声音列表
-                    window.speechSynthesis.getVoices();
-                }
-            }
-            
-            setTimeout(() => {
-                this.mainApp.style.opacity = '1';
-                
-                // 初始化事件监听
-                this.initializeEventListeners();
-                
-                // 显示欢迎消息
-                const welcomeMessage = '亲爱的，我终于等到你了！我是你的男朋友，很高兴能陪在你身边。今天过得怎么样？不累吧？';
-                this.showMessage(welcomeMessage, 'bot');
-                
-                // 移动端延迟播放语音
-                if (isMobile) {
-                    setTimeout(() => {
-                        this.speak(welcomeMessage);
-                    }, 1000);
-                } else {
+                setTimeout(() => {
                     this.speak(welcomeMessage);
-                }
-            }, 100);
-            
+                }, 1000);
+            } else {
+                this.speak(welcomeMessage);
+            }
         } catch (error) {
             console.error('主界面初始化错误:', error);
             this.showMessage('初始化遇到一些问题，但不影响基本使用', 'bot');
