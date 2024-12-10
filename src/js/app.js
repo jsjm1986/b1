@@ -209,18 +209,34 @@ class VoiceAssistant {
             this.loadingScreen.classList.remove('hidden');
             this.loadingScreen.style.opacity = '1';
             
-            // 检测浏览器类型
+            // 检测设备类型
+            const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
             const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
             const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
             
-            // 模拟加载进度
+            // 移动端特别处理
+            if (isMobile) {
+                // 预初始化语音识别（移动端可能需要用户交互才能初始化）
+                if ('webkitSpeechRecognition' in window) {
+                    this.recognition = new webkitSpeechRecognition();
+                    this.recognition.continuous = false;
+                    this.recognition.interimResults = false;
+                }
+                
+                // 预初始化语音合成
+                if (window.speechSynthesis) {
+                    window.speechSynthesis.cancel(); // 清除可能的挂起状态
+                }
+            }
+
+            // 模拟加载进度，移动端加快加载速度
             await this.simulateLoading([
                 { progress: 20, text: '正在初始化系统...' },
                 { progress: 40, text: '正在加载语音模块...' },
                 { progress: 60, text: '正在连接AI服务...' },
                 { progress: 80, text: '正在准备界面...' },
                 { progress: 100, text: '准备就绪！' }
-            ], isIOS || isSafari ? 100 : 500); // 在iOS/Safari上加快加载速度
+            ], isMobile ? 100 : 500);
             
             // 检查是否有保存的API密钥
             if (this.apiKey) {
@@ -240,7 +256,11 @@ class VoiceAssistant {
             
         } catch (error) {
             console.error('初始化错误:', error);
-            this.loadingText.textContent = '初始化失败，请刷新页面重试';
+            // 移动端显示更友好的错误信息
+            const errorMessage = isMobile ? 
+                '启动失败，请刷新重试或尝试使用其他浏览器' : 
+                '初始化失败，请刷新页面重试';
+            this.loadingText.textContent = errorMessage;
             this.progressBar.style.backgroundColor = '#ff4444';
         }
     }
@@ -274,34 +294,56 @@ class VoiceAssistant {
             : this.loadingScreen;
         
         currentScreen.style.opacity = '0';
-        await new Promise(resolve => setTimeout(resolve, 300)); // 减少过渡时间
+        await new Promise(resolve => setTimeout(resolve, 300));
         currentScreen.classList.add('hidden');
         
         // 显示主程序界面
         this.mainApp.classList.remove('hidden');
-        setTimeout(() => {
-            this.mainApp.style.opacity = '1';
-            
-            // 初始化其他功能
-            this.initializeSpeechRecognition();
-            this.initializeEventListeners();
-            
-            // 显示欢迎消息
-            const welcomeMessage = '亲爱的，我终于等到你了！我是你的男朋友，很高兴能陪在你身边。今天过得怎么样？不累吧？';
-            this.showMessage(welcomeMessage, 'bot');
-            
-            // 在iOS/Safari上延迟语音播放
-            const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-            
-            if (isIOS || isSafari) {
-                setTimeout(() => {
-                    this.speak(welcomeMessage);
-                }, 1000);
-            } else {
-                this.speak(welcomeMessage);
+        
+        // 检测设备类型
+        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+        const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+        
+        try {
+            // 移动端特别处理
+            if (isMobile) {
+                // 确保语音识别已初始化
+                if (!this.recognition && 'webkitSpeechRecognition' in window) {
+                    this.initializeSpeechRecognition();
+                }
+                
+                // 确保语音合成已初始化
+                if (window.speechSynthesis) {
+                    // 强制加载声音列表
+                    window.speechSynthesis.getVoices();
+                }
             }
-        }, 100);
+            
+            setTimeout(() => {
+                this.mainApp.style.opacity = '1';
+                
+                // 初始化事件监听
+                this.initializeEventListeners();
+                
+                // 显示欢迎消息
+                const welcomeMessage = '亲爱的，我终于等到你了！我是你的男朋友，很高兴能陪在你身边。今天过得怎么样？不累吧？';
+                this.showMessage(welcomeMessage, 'bot');
+                
+                // 移动端延迟播放语音
+                if (isMobile) {
+                    setTimeout(() => {
+                        this.speak(welcomeMessage);
+                    }, 1000);
+                } else {
+                    this.speak(welcomeMessage);
+                }
+            }, 100);
+            
+        } catch (error) {
+            console.error('主界面初始化错误:', error);
+            this.showMessage('初始化遇到一些问题，但不影响基本使用', 'bot');
+        }
     }
     
     initializeApiKeyHandling() {
@@ -429,7 +471,7 @@ class VoiceAssistant {
                     { role: 'assistant', content: data.choices[0].message.content }
                 );
                 
-                // 保持历史记录在合理范围内
+                // 保存历史记录在合理范围内
                 if (this.messageHistory.length > 10) {
                     this.messageHistory = this.messageHistory.slice(-10);
                 }
@@ -554,7 +596,7 @@ class VoiceAssistant {
                 errorMessage = '宝贝我们聊得太快了，休息一下继续吧~';
                 this.setRobotMood('shy');
             } else {
-                errorMessage = '抱歉宝贝，我遇到了一些小问题，能稍等一下吗？';
+                errorMessage = '抱歉宝贝，我遇到了一些小问题，能稍等下吗？';
                 this.setRobotMood('sad');
             }
             
@@ -989,14 +1031,6 @@ class VoiceAssistant {
                 return;
             }
 
-            // 如果正在说话，先停止当前语音
-            if (this.synthesis.speaking) {
-                this.synthesis.cancel();
-            }
-
-            // 确保语音引擎完全重置
-            this.synthesis.resume();
-            
             // 创建新的语音实例
             const utterance = new SpeechSynthesisUtterance(text);
             
@@ -1026,58 +1060,44 @@ class VoiceAssistant {
             // 错误处理
             utterance.onerror = (event) => {
                 console.log('语音合成错误:', event.error);
+                this.isSpeaking = false;
+                this.setRobotMood('default');
+                this.setStatus('待机中...');
                 
                 // 如果是用户主动中断，不视为错误
                 if (event.error === 'interrupted' || event.error === 'canceled') {
-                    this.isSpeaking = false;
-                    this.setRobotMood('default');
-                    this.setStatus('待机中...');
                     resolve();
                 } else {
-                    this.isSpeaking = false;
-                    this.setRobotMood('default');
-                    this.setStatus('待机中...');
                     reject(event);
                 }
             };
 
-            // 暂停检测
+            // 暂停检测和自动恢复
             utterance.onpause = () => {
-                this.synthesis.resume(); // 自动恢复播放
+                setTimeout(() => {
+                    if (this.synthesis.paused) {
+                        this.synthesis.resume();
+                    }
+                }, 100);
             };
 
-            // 添加超时保护
-            const timeoutDuration = Math.max(5000, text.length * 300);
-            const timeoutId = setTimeout(() => {
-                if (this.synthesis.speaking) {
-                    this.synthesis.cancel();
-                    this.isSpeaking = false;
-                    this.setRobotMood('default');
-                    this.setStatus('待机中...');
-                    resolve();
-                }
-            }, timeoutDuration);
-
-            // 尝试播放语音
-            try {
+            // 如果正在说话，先停止当前语音
+            if (this.synthesis.speaking) {
+                this.synthesis.cancel();
+                // 等待之前的语音完全停止
+                setTimeout(() => {
+                    this.synthesis.speak(utterance);
+                }, 100);
+            } else {
                 this.synthesis.speak(utterance);
-                
-                // 确保语音开始播放
-                if (!this.synthesis.speaking) {
-                    setTimeout(() => {
-                        if (!this.synthesis.speaking) {
-                            this.synthesis.speak(utterance);
-                        }
-                    }, 100);
-                }
-                
-            } catch (error) {
-                console.error('语音合成初始化错误:', error);
-                this.isSpeaking = false;
-                this.setRobotMood('default');
-                this.setStatus('待机中...');
-                reject(error);
             }
+
+            // 确保语音开始播放
+            setTimeout(() => {
+                if (!this.synthesis.speaking) {
+                    this.synthesis.speak(utterance);
+                }
+            }, 200);
         });
     }
     
@@ -1249,26 +1269,36 @@ class VoiceAssistant {
     }
     
     initializeSpeechRecognition() {
+        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
         const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
         const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
 
         if ('webkitSpeechRecognition' in window) {
-            this.recognition = new webkitSpeechRecognition();
-            this.recognition.continuous = false;
-            this.recognition.interimResults = false;
-            this.recognition.lang = 'zh-CN';
-            
-            // 在iOS/Safari上使用不同的配置
-            if (isIOS || isSafari) {
+            try {
+                this.recognition = new webkitSpeechRecognition();
                 this.recognition.continuous = false;
                 this.recognition.interimResults = false;
-                this.recognition.maxAlternatives = 1;
+                this.recognition.lang = 'zh-CN';
+                
+                // 移动端特别处理
+                if (isMobile) {
+                    this.recognition.continuous = false;
+                    this.recognition.interimResults = false;
+                    this.recognition.maxAlternatives = 1;
+                }
+                
+                this.recognition.onstart = () => this.handleRecognitionStart();
+                this.recognition.onresult = (event) => this.handleRecognitionResult(event);
+                this.recognition.onerror = (event) => this.handleRecognitionError(event);
+                this.recognition.onend = () => this.handleRecognitionEnd();
+                
+            } catch (error) {
+                console.error('语音识别初始化错误:', error);
+                // 移动端显示友好提示
+                if (isMobile) {
+                    this.showMessage('语音功能可能受限，但您仍可以使用文字交互', 'bot');
+                }
             }
-            
-            this.recognition.onstart = () => this.handleRecognitionStart();
-            this.recognition.onresult = (event) => this.handleRecognitionResult(event);
-            this.recognition.onerror = (event) => this.handleRecognitionError(event);
-            this.recognition.onend = () => this.handleRecognitionEnd();
         } else {
             this.showMessage('您的浏览器不支持语音识别功能', 'bot');
             this.startButton.disabled = true;
@@ -1625,7 +1655,7 @@ class VoiceAssistant {
                     }
                 ]);
             } else {
-                // 中间脸部区域
+                // 中间脸部区��
                 return getRandomResponse([
                     {
                         mood: 'love',
