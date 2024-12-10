@@ -327,7 +327,7 @@ class VoiceAssistant {
                 this.initializeEventListeners();
                 
                 // 显示欢迎消息
-                const welcomeMessage = '亲爱的，我终于等到你了！我是你的男朋友，很高兴能陪在你身边。今天过得怎么样？不累吧？';
+                const welcomeMessage = '亲爱的，我终于等到你了！我是你的男宝宝，很高兴能陪在你身边。今天过得怎么样？不累吧？';
                 this.showMessage(welcomeMessage, 'bot');
                 
                 // 移动端延迟播放语音
