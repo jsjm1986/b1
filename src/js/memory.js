@@ -2,11 +2,31 @@
 class MemorySystem {
     constructor() {
         this.storageKey = 'robotMemory';
-        this.memory = this.loadMemory() || this.getInitialMemory();
+        this.memory = this.getInitialMemory();
         this.initializeEmotionKeywords();
-        
-        // 设置定期保存
         this.setupAutoSave();
+        this.setupAutoBackup();
+        
+        this.initializeMemory().then(() => {
+            console.log('记忆系统初始化完成');
+        }).catch(error => {
+            console.error('记忆系统初始化失败:', error);
+        });
+    }
+
+    async initializeMemory() {
+        try {
+            const loadedMemory = await this.loadMemory();
+            if (loadedMemory) {
+                this.memory = {
+                    ...this.getInitialMemory(),
+                    ...loadedMemory,
+                };
+                console.log('成功加载存储的记忆');
+            }
+        } catch (error) {
+            console.error('记忆加载失败:', error);
+        }
     }
 
     // 初始化情感关键词
@@ -26,7 +46,7 @@ class MemorySystem {
     getInitialMemory() {
         return {
             personalInfo: {
-                nickname: '���',    // 用户昵称
+                nickname: '用户昵称',    // 用户昵称
                 name: '',             // 真实姓名
                 birthday: '',         // 生日
                 age: '',             // 年龄
@@ -44,7 +64,7 @@ class MemorySystem {
                 hobbies: [],         // 兴趣爱好
                 preferences: {        // 用户偏好
                     foods: [],        // 喜欢的食物
-                    colors: [],       // 喜欢的颜色
+                    colors: [],       // 喜色
                     music: [],        // 喜欢的音乐
                     movies: [],       // 喜欢的电影
                     sports: []        // 喜欢的运动
@@ -98,7 +118,7 @@ class MemorySystem {
                 total_conversations: 0,    // 总对话次数
                 total_interactions: 0,     // 总互动次数
                 favorite_topics: {},       // 喜爱的话题
-                interaction_frequency: {}  // 互动频率统计
+                interaction_frequency: {}  // 互动��率统计
             },
             associations: []
         };
@@ -108,30 +128,75 @@ class MemorySystem {
     loadMemory() {
         try {
             const data = localStorage.getItem(this.storageKey);
-            if (!data) return null;
-            
-            const parsed = JSON.parse(data);
-            
-            // 验证数据结构
-            if (!this.validateMemoryStructure(parsed)) {
-                // 如果验证失败，尝试加载备份
-                const backup = this.loadBackupMemory();
-                if (backup && this.validateMemoryStructure(backup)) {
-                    return backup;
-                }
+            if (!data) {
+                console.log('未找到存储的记忆');
                 return null;
             }
             
-            // 检查版本升级
-            if (this.needsUpgrade(parsed.version)) {
-                return this.upgradeMemoryStructure(parsed);
+            const parsed = JSON.parse(data);
+            
+            // 添加数据结构验证
+            if (!parsed.data || !this.validateMemoryStructure(parsed.data)) {
+                console.error('记忆数据结构无效');
+                return null;
             }
             
-            return parsed;
+            // 确保所有必要的字段都存在
+            const memory = parsed.data;
+            const defaultMemory = this.getInitialMemory();
+            
+            // 合并默认值和加载的数据
+            return {
+                personalInfo: {...defaultMemory.personalInfo, ...memory.personalInfo},
+                conversations: {
+                    key_moments: memory.conversations?.key_moments || [],
+                    shared_memories: memory.conversations?.shared_memories || [],
+                    last_conversation: memory.conversations?.last_conversation || null
+                },
+                emotional_bonds: {...defaultMemory.emotional_bonds, ...memory.emotional_bonds},
+                statistics: {...defaultMemory.statistics, ...memory.statistics}
+            };
         } catch (error) {
             console.error('加载记忆失败:', error);
-            // 尝试加载备份
-            return this.loadBackupMemory() || null;
+            return null;
+        }
+    }
+
+    // 添加更严格的数据结构验证
+    validateMemoryStructure(memory) {
+        if (!memory || typeof memory !== 'object') {
+            console.error('无效的记忆数据格式');
+            return false;
+        }
+
+        const requiredStructure = {
+            personalInfo: ['nickname', 'name', 'birthday'],
+            conversations: ['shared_memories', 'key_moments'],
+            emotional_bonds: ['intimacy_level'],
+            statistics: ['total_conversations']
+        };
+
+        try {
+            // 验证基本结构
+            for (const [section, fields] of Object.entries(requiredStructure)) {
+                if (!memory[section] || typeof memory[section] !== 'object') {
+                    console.error(`缺少必要部分: ${section}`);
+                    return false;
+                }
+
+                // 验证必要字段
+                for (const field of fields) {
+                    if (!memory[section].hasOwnProperty(field)) {
+                        console.error(`${section} 缺少字段: ${field}`);
+                        return false;
+                    }
+                }
+            }
+
+            return true;
+        } catch (error) {
+            console.error('验证记忆结构时出错:', error);
+            return false;
         }
     }
 
@@ -149,14 +214,36 @@ class MemorySystem {
     // 保存记忆
     saveMemory() {
         try {
-            const memoryString = JSON.stringify(this.memory);
-            const memorySize = new Blob([memoryString]).size;
-            
-            if (memorySize > 5 * 1024 * 1024) { // 5MB限制
-                this.cleanupOldMemories();
+            // 添加数据验证
+            if (!this.validateMemoryStructure(this.memory)) {
+                console.error('记忆数据结构无效');
+                return false;
             }
+
+            // 准备保存数据
+            const saveData = {
+                version: '1.0',
+                timestamp: new Date().toISOString(),
+                data: {
+                    ...this.memory,
+                    lastSaved: new Date().toISOString()
+                }
+            };
+
+            // 保存前先创建备份
+            this.createBackup();
+
+            // 保存并验证
+            const serialized = JSON.stringify(saveData);
+            localStorage.setItem(this.storageKey, serialized);
             
-            localStorage.setItem(this.storageKey, memoryString);
+            // 验证保存结果
+            const savedData = localStorage.getItem(this.storageKey);
+            if (!savedData || savedData !== serialized) {
+                throw new Error('保存验证失败');
+            }
+
+            this.lastSavedMemory = serialized; // 更新最后保存的状态
             return true;
         } catch (error) {
             console.error('保存记忆失败:', error);
@@ -164,20 +251,92 @@ class MemorySystem {
         }
     }
 
+    // 添加数据校验
+    calculateChecksum(data) {
+        return typeof data === 'object' ? 
+            JSON.stringify(data).split('').reduce((a, b) => {
+                a = ((a << 5) - a) + b.charCodeAt(0);
+                return a & a;
+            }, 0) : 0;
+    }
+
     // 更新用户信息
     updatePersonalInfo(info) {
-        this.memory.personalInfo = { ...this.memory.personalInfo, ...info };
+        // 添加数据验证
+        if (!this.validatePersonalInfo(info)) {
+            console.error('个人信息格式无效');
+            return false;
+        }
+        
+        // 添加变更日志
+        const changes = this.trackChanges(this.memory.personalInfo, info);
+        if (Object.keys(changes).length > 0) {
+            this.logChanges('personalInfo', changes);
+        }
+        
+        // 更新信息
+        this.memory.personalInfo = { 
+            ...this.memory.personalInfo, 
+            ...info,
+            lastUpdated: new Date().toISOString()
+        };
+        
         return this.saveMemory();
+    }
+
+    validatePersonalInfo(info) {
+        const validators = {
+            birthday: (val) => /^\d{4}年\d{1,2}月\d{1,2}[日号]$/.test(val),
+            age: (val) => Number.isInteger(Number(val)) && Number(val) > 0,
+            phone: (val) => /^\d{11}$/.test(val)
+        };
+        
+        // 需要添加更多验证规则
+        const additionalValidators = {
+            name: (val) => val && val.length >= 2 && val.length <= 20,
+            zodiac: (val) => ['白羊座', '金牛座', '双子座', '巨蟹座', '狮子座', '处女座', 
+                             '天秤座', '天蝎座', '射手座', '摩羯座', '水瓶座', '双鱼座'].includes(val),
+            bloodType: (val) => /^(A|B|O|AB)[+-]?$/.test(val)
+        };
+
+        Object.assign(validators, additionalValidators);
+        
+        return Object.entries(info).every(([key, value]) => {
+            if (!value) return true; // 跳过空值
+            if (validators[key]) {
+                const isValid = validators[key](value);
+                if (!isValid) {
+                    console.error(`${key} 格式无效:`, value);
+                }
+                return isValid;
+            }
+            return true;
+        });
+    }
+
+    trackChanges(oldData, newData) {
+        const changes = {};
+        Object.keys(newData).forEach(key => {
+            if (oldData[key] !== newData[key]) {
+                changes[key] = {
+                    from: oldData[key],
+                    to: newData[key]
+                };
+            }
+        });
+        return changes;
     }
 
     // 分析并提取个人信息
     analyzePersonalInfo(message) {
         const patterns = {
-            // 基本信息
             birthday: [
                 /我的生日是?([0-9]{4}年)?([0-9]{1,2}月[0-9]{1,2}[日号])/,
                 /([0-9]{1,2}月[0-9]{1,2}[日号]).*生日/,
-                /生日.*([0-9]{1,2}月[0-9]{1,2}[日号])/
+                /生日.*([0-9]{1,2}月[0-9]{1,2}[日号])/,
+                /出生于?([0-9]{4}年)?([0-9]{1,2}月[0-9]{1,2}[日号])/,
+                /([0-9]{1,2})[.月]([0-9]{1,2})[日号]?/,
+                /生日是?([0-9]{1,2})[.月]([0-9]{1,2})/
             ],
             age: [
                 /我.*?([0-9]{1,3}).*岁/,
@@ -202,16 +361,16 @@ class MemorySystem {
             ],
             // 工作信息
             occupation: [
-                /我是(一[��名]|做)?([^，。！？,!?]{2,10})(工)?的/,
+                /我是(一[名]|做)?([^，。！？,!?]{2,10})(工)?的/,
                 /我(在|目前|现在)是([^，。！？,!?]{2,10})/
             ],
             company: [
                 /我在([^，。！？,!?]{2,20})(?:公司|企业|单位)(?:上班|工作)/,
                 /([^，。！？,!?]{2,20})(?:公司|企业|单位).*工作/
             ],
-            // 教育信息
+            // 教育信
             education: [
-                /我(是|在)([^，。！？,!?]{2,15})(毕业|学生|读书|在读)/,
+                /(是|在)([^，。！？,!?]{2,15})(毕业|学生|读书|在读)/,
                 /(毕业|就读)于([^，。！？,!?]{2,15})/
             ],
             school: [
@@ -219,13 +378,13 @@ class MemorySystem {
                 /([^，。！？,!?]{2,15})(大学|学院|学校).*?(毕业|在读)/
             ],
             major: [
-                /我学的是([^，。！？,!?]{2,15})/,
+                /我的是([^，。！？,!?]{2,15})/,
                 /专业是([^，。！？,!?]{2,15})/
             ],
             // 地址信息
             address: [
                 /我住在([^，。！？,!?]{3,20})/,
-                /地址是([^，。！？,!?]{3,20})/,
+                /地([^，。！？,!?]{3,20})/,
                 /([^，。！？,!?]{3,20}).*这里住/
             ],
             hometown: [
@@ -258,9 +417,9 @@ class MemorySystem {
             });
         });
 
-        // 分析兴趣爱好
+        // 析兴趣爱好
         const hobbyPatterns = [
-            /我(喜欢|爱好是)([^，。！？,!?]{2,20})/,
+            /我(喜欢|爱)([^，。！？,!?]{2,20})/,
             /我(最爱|特别喜欢)([^，。！？,!?]{2,20})/
         ];
 
@@ -316,7 +475,7 @@ class MemorySystem {
             this.memory.personalInfo.emotional_state.history.shift();
         }
 
-        // 更新情绪触发因素计
+        // 更新情绪触发因素
         this.memory.personalInfo.emotional_state.triggers[emotion] = 
             (this.memory.personalInfo.emotional_state.triggers[emotion] || 0) + 1;
     }
@@ -325,7 +484,7 @@ class MemorySystem {
     analyzeImportantDates(message) {
         const datePatterns = {
             anniversary: [
-                /纪念日是?([0-9]{4}年)?([0-9]{1,2}月[0-9]{1,2}[日号])/,
+                /纪念日是?([0-9]{4}年)?([0-9]{1,2}月[0-9]{1,2}[日])/,
                 /([0-9]{1,2}月[0-9]{1,2}[日号]).*纪念日/
             ],
             special_days: [
@@ -364,17 +523,11 @@ class MemorySystem {
         // 分析并更新个人信息
         const personalInfo = this.analyzePersonalInfo(message);
         if (Object.keys(personalInfo).length > 0) {
-            this.updatePersonalInfo(personalInfo);
-            isImportant = true;
-        }
-
-        // 分析并更新重要日期
-        const importantDates = this.analyzeImportantDates(message);
-        if (Object.keys(importantDates).length > 0) {
-            this.memory.personalInfo.important_dates = {
-                ...this.memory.personalInfo.important_dates,
-                ...importantDates
-            };
+            console.log('取到个人信息:', personalInfo); // 添加日志
+            const updateResult = this.updatePersonalInfo(personalInfo);
+            if (!updateResult) {
+                console.error('个人信息更新失败');
+            }
             isImportant = true;
         }
 
@@ -382,32 +535,21 @@ class MemorySystem {
         this.memory.statistics.total_conversations++;
         this.memory.conversations.last_conversation = timestamp;
 
-        // 分析并记录话题
-        const topics = this.analyzeTopics(message);
-        topics.forEach(topic => {
-            this.memory.statistics.favorite_topics[topic] = 
-                (this.memory.statistics.favorite_topics[topic] || 0) + 1;
+        // 保存对话记录
+        this.memory.conversations.shared_memories.push({
+            ...conversation,
+            extractedInfo: personalInfo // 保存提取的信息
         });
 
-        if (isImportant) {
-            this.memory.conversations.key_moments.push(conversation);
-        }
-        this.memory.conversations.shared_memories.push(conversation);
-
-        // 保持记忆容量在合理范围内
-        if (this.memory.conversations.shared_memories.length > 100) {
-            this.memory.conversations.shared_memories.shift();
-        }
-
-        this.saveMemory();
-        return isImportant;
+        // 立保存更新
+        return this.saveMemory();
     }
 
     // 分析对话主题
     analyzeTopics(message) {
         const topics = [];
         const topicKeywords = {
-            '爱情': ['爱', '喜欢', '想你', '想念', '心动'],
+            '爱情': ['爱', '喜���', '想你', '想念', '动'],
             '生活': ['吃饭', '睡觉', '工作', '学习', '生活'],
             '心情': ['开心', '难过', '高兴', '伤心', '快乐'],
             '未来': ['将', '未来', '计划', '梦想', '希望']
@@ -545,7 +687,7 @@ class MemorySystem {
         if (info.name) summary.push(`姓名：${info.name}`);
         if (info.age) summary.push(`年龄：${info.age}`);
         if (info.birthday) summary.push(`生日：${info.birthday}`);
-        if (info.zodiac) summary.push(`星��：${info.zodiac}`);
+        if (info.zodiac) summary.push(`星：${info.zodiac}`);
         if (info.bloodType) summary.push(`血型：${info.bloodType}`);
         
         // 身体信息
@@ -568,7 +710,7 @@ class MemorySystem {
             summary.push(`兴趣爱好：${info.hobbies.join('、')}`);
         }
 
-        // 重要日期
+        // 重日期
         const dates = info.important_dates;
         if (dates.anniversary) summary.push(`纪念日：${dates.anniversary}`);
         if (dates.graduation) summary.push(`毕业日期：${dates.graduation}`);
@@ -608,10 +750,10 @@ class MemorySystem {
         const personalInfo = this.getPersonalInfoSummary();
         
         return {
-            duration: `我们已经认识 ${summary.daysKnown} 天了`,
+            duration: `我们经认识 ${summary.daysKnown} 天了`,
             intimacy: `当前关系：${this.getEmotionalState()}`,
             personalInfo: personalInfo ? `\n个人信息：\n${personalInfo}` : '',
-            interactions: `共有 ${summary.totalConversations} 次对话，${summary.totalInteractions} 次互动`,
+            interactions: `共有 ${summary.totalConversations} 次对话和${summary.totalInteractions} 次互动`,
             favoriteTopics: `最喜欢聊的话题：${summary.favoriteTopics.join('、')}`,
             activeTime: activeTime.mostActiveHour !== null ? 
                 `最活跃的时间是 ${activeTime.mostActiveHour} 点` : 
@@ -685,16 +827,22 @@ class MemorySystem {
         this.saveToBackupStorage(backup);
     }
 
-    // 建议添加压缩机制
+    // 建议添加压缩制
     compressMemory() {
-        // 移除重复数据
-        // 合并相似记忆
-        // 删除不重要的历史记录
-        this.memory.conversations.shared_memories = 
-            this.memory.conversations.shared_memories.filter(memory => 
-                memory.priority > 1 || 
-                (new Date() - new Date(memory.timestamp)) < (7 * 24 * 60 * 60 * 1000)
-            );
+        // 合并相记忆
+        this.mergeSimilarMemories();
+        
+        // 清理过期数据
+        this.cleanExpiredData();
+        
+        // 压缩存储
+        this.compressStorage();
+    }
+
+    mergeSimilarMemories() {
+        // 使用相似度算法合并相近的记忆
+        const memories = this.memory.conversations.shared_memories;
+        // ...实现记忆合并逻辑
     }
 
     // 建议添加索引机制
@@ -711,7 +859,7 @@ class MemorySystem {
         });
     }
 
-    // 添加版本检查方法
+    // 添加版本检方法
     needsUpgrade(version) {
         const currentVersion = '1.0'; // 当前系统版本
         return version && version !== currentVersion;
@@ -738,7 +886,7 @@ class MemorySystem {
                 };
             }
             
-            // 添加新字段的默认值
+            // 添加字段的默认值
             return newMemory;
         } catch (error) {
             console.error('记忆结构升级失败:', error);
@@ -755,7 +903,7 @@ class MemorySystem {
         ];
         
         try {
-            // 检查必要字段
+            // 检查要字段
             const isValid = requiredFields.every(field => 
                 memory && typeof memory[field] === 'object'
             );
@@ -780,23 +928,26 @@ class MemorySystem {
     }
 
     setupAutoSave() {
-        // 每5分钟自动保存一次
+        // 定期检查并保存
         setInterval(() => {
             if (this.hasMemoryChanged()) {
+                console.log('检测到记忆变化，自动保存');
                 this.saveMemory();
-                this.createBackup();
             }
-        }, 5 * 60 * 1000);
+        }, 30000); // 每30秒检查一次
+
+        // 页面关闭前保存
+        window.addEventListener('beforeunload', () => {
+            if (this.hasMemoryChanged()) {
+                console.log('页面关闭前保存记忆');
+                this.saveMemory();
+            }
+        });
     }
 
     hasMemoryChanged() {
-        // 检查记忆是否发生变化
-        const currentMemoryString = JSON.stringify(this.memory);
-        if (this.lastSavedMemory !== currentMemoryString) {
-            this.lastSavedMemory = currentMemoryString;
-            return true;
-        }
-        return false;
+        const currentMemory = JSON.stringify(this.memory);
+        return this.lastSavedMemory !== currentMemory;
     }
 
     // 添加数据加密存储
@@ -837,7 +988,7 @@ class MemorySystem {
         return this.accessControl[operation] || false;
     }
 
-    // 添加分页加载机制
+    // 添加分页载机制
     loadMemoriesByPage(page, size) {
         const start = page * size;
         const end = start + size;
@@ -850,7 +1001,7 @@ class MemorySystem {
         // 缓存常用查询结果
     }
 
-    // 添加��误处理中心
+    // 添加错误处理中心
     handleError(error, context) {
         const errorLog = {
             timestamp: new Date().toISOString(),
@@ -865,7 +1016,7 @@ class MemorySystem {
         return this.attemptRecovery(context);
     }
     
-    // 添加错误恢复机制
+    // 添加错误恢复机
     attemptRecovery(context) {
         switch(context) {
             case 'load':
@@ -891,5 +1042,155 @@ class MemorySystem {
             timestamp: new Date().toISOString(),
             details: result.details
         };
+    }
+
+    // 添加存储验证方法
+    verifyStoredInfo() {
+        const info = this.memory.personalInfo;
+        console.log('当前存储的个人信息:', info); // 添加日志
+        
+        // 验证关键信息否正确存储
+        const criticalFields = ['birthday', 'name', 'age'];
+        criticalFields.forEach(field => {
+            if (info[field]) {
+                console.log(`${field}: ${info[field]}`);
+            } else {
+                console.log(`${field} 未设置`);
+            }
+        });
+    }
+
+    // 添加信息确认方法
+    confirmPersonalInfo(info) {
+        // 生成确认消息
+        const confirmMessage = Object.entries(info)
+            .map(([key, value]) => `${key}: ${value}`)
+            .join('\n');
+        
+        console.log('需要确认的信息:', confirmMessage);
+        
+        // 这里可以添加用户确认机制
+        return true; // 或者等待用户确认
+    }
+
+    // 添加自动备份
+    setupAutoBackup() {
+        const backupInterval = 24 * 60 * 60 * 1000; // 24小时
+        setInterval(() => {
+            this.createBackup();
+        }, backupInterval);
+    }
+
+    createBackup() {
+        try {
+            const backup = {
+                timestamp: new Date().toISOString(),
+                version: '1.0',
+                data: this.memory
+            };
+            
+            localStorage.setItem(
+                `${this.storageKey}_backup_${backup.timestamp}`, 
+                JSON.stringify(backup)
+            );
+            
+            this.cleanupOldBackups();
+            return true;
+        } catch (error) {
+            console.error('创建备份失败:', error);
+            return false;
+        }
+    }
+
+    cleanupOldBackups() {
+        const maxBackups = 7; // 保留最近7天的备份
+        const backupKeys = Object.keys(localStorage)
+            .filter(key => key.startsWith(`${this.storageKey}_backup_`))
+            .sort()
+            .reverse();
+        
+        if (backupKeys.length > maxBackups) {
+            backupKeys.slice(maxBackups).forEach(key => {
+                localStorage.removeItem(key);
+            });
+        }
+    }
+
+    // 建议添加
+    updateMemory(type, data) {
+        // 记录更新
+        const updateLog = {
+            type,
+            timestamp: new Date().toISOString(),
+            data
+        };
+        
+        // 触发更新事件
+        this.notifyMemoryUpdate(updateLog);
+        
+        // 更新索引
+        this.memoryIndex.indexMemory(data);
+    }
+
+    notifyMemoryUpdate(updateLog) {
+        // 通知其他组件记忆已更新
+        const event = new CustomEvent('memoryUpdate', {
+            detail: updateLog
+        });
+        document.dispatchEvent(event);
+    }
+
+    // 在类中添加调试方法
+    debugMemory() {
+        console.log('当前记忆状态:', {
+            personalInfo: this.memory.personalInfo,
+            conversationsCount: this.memory.conversations.shared_memories.length,
+            lastConversation: this.memory.conversations.last_conversation,
+            emotionalBonds: this.memory.emotional_bonds,
+            statistics: this.memory.statistics
+        });
+    }
+}
+
+// 添加记忆索引
+class MemoryIndex {
+    constructor() {
+        this.topicIndex = new Map();
+        this.dateIndex = new Map();
+        this.emotionIndex = new Map();
+    }
+    
+    indexMemory(memory) {
+        // 索引主题、日期和情感
+        // ...
+    }
+}
+
+// 建议添加
+class MemoryLoadingState {
+    constructor() {
+        this.status = 'idle';
+        this.error = null;
+        this.progress = 0;
+    }
+    
+    setLoading() {
+        this.status = 'loading';
+        this.notifyStateChange();
+    }
+    
+    setComplete() {
+        this.status = 'complete';
+        this.notifyStateChange();
+    }
+    
+    setError(error) {
+        this.status = 'error';
+        this.error = error;
+        this.notifyStateChange();
+    }
+    
+    notifyStateChange() {
+        // 通知UI更新加载状态
     }
 } 
