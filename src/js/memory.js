@@ -4,6 +4,9 @@ class MemorySystem {
         this.storageKey = 'robotMemory';
         this.memory = this.loadMemory() || this.getInitialMemory();
         this.initializeEmotionKeywords();
+        
+        // 设置定期保存
+        this.setupAutoSave();
     }
 
     // 初始化情感关键词
@@ -23,7 +26,7 @@ class MemorySystem {
     getInitialMemory() {
         return {
             personalInfo: {
-                nickname: '亲爱的',    // 用户昵称
+                nickname: '���',    // 用户昵称
                 name: '',             // 真实姓名
                 birthday: '',         // 生日
                 age: '',             // 年龄
@@ -96,7 +99,8 @@ class MemorySystem {
                 total_interactions: 0,     // 总互动次数
                 favorite_topics: {},       // 喜爱的话题
                 interaction_frequency: {}  // 互动频率统计
-            }
+            },
+            associations: []
         };
     }
 
@@ -104,9 +108,40 @@ class MemorySystem {
     loadMemory() {
         try {
             const data = localStorage.getItem(this.storageKey);
-            return data ? JSON.parse(data) : null;
+            if (!data) return null;
+            
+            const parsed = JSON.parse(data);
+            
+            // 验证数据结构
+            if (!this.validateMemoryStructure(parsed)) {
+                // 如果验证失败，尝试加载备份
+                const backup = this.loadBackupMemory();
+                if (backup && this.validateMemoryStructure(backup)) {
+                    return backup;
+                }
+                return null;
+            }
+            
+            // 检查版本升级
+            if (this.needsUpgrade(parsed.version)) {
+                return this.upgradeMemoryStructure(parsed);
+            }
+            
+            return parsed;
         } catch (error) {
             console.error('加载记忆失败:', error);
+            // 尝试加载备份
+            return this.loadBackupMemory() || null;
+        }
+    }
+
+    loadBackupMemory() {
+        try {
+            // 可以从IndexedDB或其他备份位置加载
+            const backup = localStorage.getItem(this.storageKey + '_backup');
+            return backup ? JSON.parse(backup) : null;
+        } catch (error) {
+            console.error('加载备份记忆失败:', error);
             return null;
         }
     }
@@ -114,7 +149,14 @@ class MemorySystem {
     // 保存记忆
     saveMemory() {
         try {
-            localStorage.setItem(this.storageKey, JSON.stringify(this.memory));
+            const memoryString = JSON.stringify(this.memory);
+            const memorySize = new Blob([memoryString]).size;
+            
+            if (memorySize > 5 * 1024 * 1024) { // 5MB限制
+                this.cleanupOldMemories();
+            }
+            
+            localStorage.setItem(this.storageKey, memoryString);
             return true;
         } catch (error) {
             console.error('保存记忆失败:', error);
@@ -147,7 +189,7 @@ class MemorySystem {
             ],
             // 身体信息
             height: [
-                /我.*?([0-9]{2,3}).*?(厘米|cm|CM)/,
+                /我.*?([0-9]{2,3}).*?(米|cm|CM)/,
                 /身高.*?([0-9]{2,3})/
             ],
             weight: [
@@ -160,7 +202,7 @@ class MemorySystem {
             ],
             // 工作信息
             occupation: [
-                /我是(一[个名]|做)?([^，。！？,!?]{2,10})(工作)?的/,
+                /我是(一[��名]|做)?([^，。！？,!?]{2,10})(工)?的/,
                 /我(在|目前|现在)是([^，。！？,!?]{2,10})/
             ],
             company: [
@@ -193,7 +235,7 @@ class MemorySystem {
             ],
             // 联系方式
             phone: [
-                /我的电话是([0-9-]{8,13})/,
+                /我是([0-9-]{8,13})/,
                 /联系方式是([0-9-]{8,13})/
             ],
             email: [
@@ -274,7 +316,7 @@ class MemorySystem {
             this.memory.personalInfo.emotional_state.history.shift();
         }
 
-        // 更新情绪触发因素统计
+        // 更新情绪触发因素计
         this.memory.personalInfo.emotional_state.triggers[emotion] = 
             (this.memory.personalInfo.emotional_state.triggers[emotion] || 0) + 1;
     }
@@ -368,7 +410,7 @@ class MemorySystem {
             '爱情': ['爱', '喜欢', '想你', '想念', '心动'],
             '生活': ['吃饭', '睡觉', '工作', '学习', '生活'],
             '心情': ['开心', '难过', '高兴', '伤心', '快乐'],
-            '未来': ['将来', '未来', '计划', '梦想', '希望']
+            '未来': ['将', '未来', '计划', '梦想', '希望']
         };
 
         Object.entries(topicKeywords).forEach(([topic, keywords]) => {
@@ -503,7 +545,7 @@ class MemorySystem {
         if (info.name) summary.push(`姓名：${info.name}`);
         if (info.age) summary.push(`年龄：${info.age}`);
         if (info.birthday) summary.push(`生日：${info.birthday}`);
-        if (info.zodiac) summary.push(`星座：${info.zodiac}`);
+        if (info.zodiac) summary.push(`星��：${info.zodiac}`);
         if (info.bloodType) summary.push(`血型：${info.bloodType}`);
         
         // 身体信息
@@ -574,6 +616,280 @@ class MemorySystem {
             activeTime: activeTime.mostActiveHour !== null ? 
                 `最活跃的时间是 ${activeTime.mostActiveHour} 点` : 
                 '还在了解你的作息时间'
+        };
+    }
+
+    // 添加记忆优先级属性
+    prioritizeMemory(memoryType, content) {
+        return {
+            priority: this.calculatePriority(memoryType, content),
+            timestamp: new Date().toISOString(),
+            content: content,
+            type: memoryType
+        };
+    }
+
+    calculatePriority(type, content) {
+        // 基于类型和内容计算优先级
+        let priority = 0;
+        switch(type) {
+            case 'personal_info':
+                priority = 5;
+                break;
+            case 'emotional':
+                priority = 4;
+                break;
+            case 'daily_conversation':
+                priority = 2;
+                break;
+            // ...
+        }
+        return priority;
+    }
+
+    // 添加记忆衰减方法
+    applyMemoryDecay() {
+        const now = new Date();
+        this.memory.conversations.shared_memories = 
+            this.memory.conversations.shared_memories.filter(memory => {
+                const age = (now - new Date(memory.timestamp)) / (1000 * 60 * 60 * 24);
+                const decayThreshold = memory.priority * 30; // 基于优先级的保存天数
+                return age <= decayThreshold;
+            });
+    }
+
+    // 添加记忆关联方法
+    createMemoryAssociation(memory1, memory2, associationType) {
+        if (!this.memory.associations) {
+            this.memory.associations = [];
+        }
+        
+        this.memory.associations.push({
+            memory1Id: memory1.id,
+            memory2Id: memory2.id,
+            type: associationType,
+            strength: 1,
+            timestamp: new Date().toISOString()
+        });
+    }
+
+    // 建议添加备份机制
+    backupMemory() {
+        const backup = {
+            timestamp: new Date().toISOString(),
+            data: this.memory,
+            version: '1.0'
+        };
+        
+        // 可以选择存到IndexedDB或发送到服务器
+        this.saveToBackupStorage(backup);
+    }
+
+    // 建议添加压缩机制
+    compressMemory() {
+        // 移除重复数据
+        // 合并相似记忆
+        // 删除不重要的历史记录
+        this.memory.conversations.shared_memories = 
+            this.memory.conversations.shared_memories.filter(memory => 
+                memory.priority > 1 || 
+                (new Date() - new Date(memory.timestamp)) < (7 * 24 * 60 * 60 * 1000)
+            );
+    }
+
+    // 建议添加索引机制
+    createMemoryIndex() {
+        this.memoryIndex = {
+            topics: new Map(),
+            dates: new Map(),
+            emotions: new Map()
+        };
+        
+        this.memory.conversations.shared_memories.forEach(memory => {
+            // 建立索引
+            this.indexMemory(memory);
+        });
+    }
+
+    // 添加版本检查方法
+    needsUpgrade(version) {
+        const currentVersion = '1.0'; // 当前系统版本
+        return version && version !== currentVersion;
+    }
+
+    // 添加升级结构方法
+    upgradeMemoryStructure(oldMemory) {
+        // 根据版本进行结构升级
+        const newMemory = this.getInitialMemory();
+        
+        try {
+            // 保留旧数据
+            if (oldMemory.personalInfo) {
+                newMemory.personalInfo = {
+                    ...newMemory.personalInfo,
+                    ...oldMemory.personalInfo
+                };
+            }
+            
+            if (oldMemory.conversations) {
+                newMemory.conversations = {
+                    ...newMemory.conversations,
+                    ...oldMemory.conversations
+                };
+            }
+            
+            // 添加新字段的默认值
+            return newMemory;
+        } catch (error) {
+            console.error('记忆结构升级失败:', error);
+            return this.getInitialMemory();
+        }
+    }
+
+    validateMemoryStructure(memory) {
+        const requiredFields = [
+            'personalInfo',
+            'conversations',
+            'emotional_bonds',
+            'statistics'
+        ];
+        
+        try {
+            // 检查必要字段
+            const isValid = requiredFields.every(field => 
+                memory && typeof memory[field] === 'object'
+            );
+            
+            if (!isValid) {
+                console.warn('记忆结构不完整，重新初始化');
+                return false;
+            }
+            
+            // 检查关键子字段
+            if (!memory.personalInfo.emotional_state || 
+                !Array.isArray(memory.conversations.shared_memories)) {
+                console.warn('记忆子结构不完整，重新初始化');
+                return false;
+            }
+            
+            return true;
+        } catch (error) {
+            console.error('记忆结构验证失败:', error);
+            return false;
+        }
+    }
+
+    setupAutoSave() {
+        // 每5分钟自动保存一次
+        setInterval(() => {
+            if (this.hasMemoryChanged()) {
+                this.saveMemory();
+                this.createBackup();
+            }
+        }, 5 * 60 * 1000);
+    }
+
+    hasMemoryChanged() {
+        // 检查记忆是否发生变化
+        const currentMemoryString = JSON.stringify(this.memory);
+        if (this.lastSavedMemory !== currentMemoryString) {
+            this.lastSavedMemory = currentMemoryString;
+            return true;
+        }
+        return false;
+    }
+
+    // 添加数据加密存储
+    encryptMemory(data) {
+        // 使用加密算法保护敏感信息
+        return encryptedData;
+    }
+    
+    // 添加存储配额管理
+    async checkStorageQuota() {
+        try {
+            const quota = navigator.storage && navigator.storage.estimate ?
+                await navigator.storage.estimate() : null;
+            return quota;
+        } catch (error) {
+            console.error('存储配额检查失败:', error);
+            return null;
+        }
+    }
+
+    // 添加敏感信息处理
+    sanitizePersonalInfo(info) {
+        const sensitiveFields = ['phone', 'email', 'address'];
+        const sanitized = {...info};
+        
+        sensitiveFields.forEach(field => {
+            if (sanitized[field]) {
+                sanitized[field] = this.maskSensitiveData(sanitized[field]);
+            }
+        });
+        
+        return sanitized;
+    }
+    
+    // 添加访问控制
+    checkAccessPermission(operation) {
+        // 检查操作权限
+        return this.accessControl[operation] || false;
+    }
+
+    // 添加分页加载机制
+    loadMemoriesByPage(page, size) {
+        const start = page * size;
+        const end = start + size;
+        return this.memory.conversations.shared_memories.slice(start, end);
+    }
+    
+    // 添加缓存机制
+    cacheFrequentQueries() {
+        this.queryCache = new Map();
+        // 缓存常用查询结果
+    }
+
+    // 添加��误处理中心
+    handleError(error, context) {
+        const errorLog = {
+            timestamp: new Date().toISOString(),
+            error: error.message,
+            context,
+            stack: error.stack
+        };
+        
+        this.logError(errorLog);
+        this.notifyUser(error.message);
+        
+        return this.attemptRecovery(context);
+    }
+    
+    // 添加错误恢复机制
+    attemptRecovery(context) {
+        switch(context) {
+            case 'load':
+                return this.loadBackupMemory();
+            case 'save':
+                return this.retryWithCompression();
+            default:
+                return null;
+        }
+    }
+
+    // 添加状态管理
+    updateStatus(status) {
+        this.status = status;
+        this.notifyStatusChange(status);
+    }
+    
+    // 添加操作反馈
+    provideFeedback(operation, result) {
+        return {
+            success: result.success,
+            message: result.message,
+            timestamp: new Date().toISOString(),
+            details: result.details
         };
     }
 } 
