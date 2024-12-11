@@ -221,6 +221,48 @@ class VoiceAssistant {
             this.loadingScreen.classList.remove('hidden');
             this.loadingScreen.style.opacity = '1';
             
+            // 设备检测
+            const userAgent = navigator.userAgent;
+            const isIOS = /iPad|iPhone|iPod/.test(userAgent);
+            const isSafari = /^((?!chrome|android).)*safari/i.test(userAgent);
+            
+            // iOS 特别处理
+            if (isIOS) {
+                try {
+                    // 1. 快速完成加载
+                    await this.simulateLoading([
+                        { progress: 100, text: '准备就绪！' }
+                    ], 50);
+                    
+                    // 2. 检查 API 密钥
+                    if (this.apiKey) {
+                        const isValid = await this.validateApiKey(this.apiKey);
+                        if (!isValid) {
+                            localStorage.removeItem('glm4_api_key');
+                            this.apiKey = null;
+                        }
+                    }
+                    
+                    // 3. 预初始化语音功能
+                    if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
+                        await this.initializeIOSSpeech();
+                    }
+                    
+                    // 4. 显示主界面或 API 输入界面
+                    if (this.apiKey) {
+                        await this.showMainApp(true); // true 表示是 iOS 设备
+                    } else {
+                        await this.showApiKeyModal();
+                    }
+                    
+                } catch (error) {
+                    console.error('iOS初始化错误:', error);
+                    // 错误恢复：显示API输入界面
+                    await this.showApiKeyModal();
+                }
+                return;
+            }
+            
             // 快速检查API密钥
             if (this.apiKey) {
                 const isValid = await this.validateApiKey(this.apiKey);
@@ -231,7 +273,6 @@ class VoiceAssistant {
             }
 
             // 设备检测
-            const userAgent = navigator.userAgent;
             const browserInfo = {
                 isMobile: /iPhone|iPad|iPod|Android/i.test(userAgent),
                 isAndroid: /Android/i.test(userAgent),
@@ -2180,6 +2221,118 @@ class VoiceAssistant {
         });
 
         return switchButton;
+    }
+
+    // 添加 iOS 语音初始化方法
+    async initializeIOSSpeech() {
+        try {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            this.recognition = new SpeechRecognition();
+            this.recognition.continuous = false;
+            this.recognition.interimResults = false;
+            this.recognition.lang = 'zh-CN';
+            
+            // 配置事件处理
+            this.recognition.onstart = () => {
+                this.isListening = true;
+                this.updateIOSUI(true);
+            };
+            
+            this.recognition.onend = () => {
+                this.isListening = false;
+                this.updateIOSUI(false);
+            };
+            
+            this.recognition.onerror = (event) => {
+                console.error('iOS语音识别错误:', event.error);
+                this.handleIOSVoiceError(event.error);
+            };
+            
+            this.recognition.onresult = (event) => {
+                const text = event.results[0][0].transcript;
+                this.processUserInput(text);
+            };
+            
+            // 初始化语音合成
+            if ('speechSynthesis' in window) {
+                window.speechSynthesis.onvoiceschanged = () => {
+                    const voices = window.speechSynthesis.getVoices();
+                    this.voice = voices.find(voice => 
+                        voice.lang.includes('zh') && voice.name.includes('Female')
+                    ) || voices.find(voice => 
+                        voice.lang.includes('zh')
+                    ) || voices[0];
+                };
+                window.speechSynthesis.getVoices();
+            }
+            
+            return true;
+        } catch (error) {
+            console.error('iOS语音初始化失败:', error);
+            return false;
+        }
+    }
+
+    // 添加 iOS UI 更新方法
+    updateIOSUI(isRecording) {
+        const voiceButton = document.querySelector('.voice-button');
+        if (voiceButton) {
+            voiceButton.classList.toggle('recording', isRecording);
+            voiceButton.innerHTML = isRecording ? 
+                '<i class="fas fa-stop"></i>' : 
+                '<i class="fas fa-microphone"></i>';
+        }
+        
+        // 更新状态提示
+        if (isRecording) {
+            this.showVoiceStatus();
+        } else {
+            this.hideVoiceStatus();
+        }
+    }
+
+    // 添加 iOS 语音错误处理方法
+    handleIOSVoiceError(error) {
+        let message = '语音识别出错，请重试';
+        
+        switch (error) {
+            case 'not-allowed':
+                message = '请允许访问麦克风以使用语音功能';
+                break;
+            case 'network':
+                message = '网络连接不稳定，请检查网络';
+                break;
+            case 'no-speech':
+                message = '没有检测到语音，请重试';
+                break;
+            case 'aborted':
+                message = '语音识别被中断';
+                break;
+        }
+        
+        this.showMessage(message, 'bot');
+        this.updateIOSUI(false);
+    }
+
+    // 添加语音状态显示方法
+    showVoiceStatus() {
+        const status = document.createElement('div');
+        status.className = 'ios-voice-status';
+        status.innerHTML = `
+            <div class="voice-wave">
+                <span></span><span></span><span></span><span></span>
+            </div>
+            <div class="voice-text">正在聆听...</div>
+        `;
+        document.body.appendChild(status);
+    }
+
+    // 添加语音状态隐藏方法
+    hideVoiceStatus() {
+        const status = document.querySelector('.ios-voice-status');
+        if (status) {
+            status.remove();
+        }
     }
 }
 
