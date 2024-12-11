@@ -222,75 +222,191 @@ class VoiceAssistant {
             this.loadingScreen.classList.remove('hidden');
             this.loadingScreen.style.opacity = '1';
             
-            // 检测设备类型
-            const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-            const isAndroid = /Android/i.test(navigator.userAgent);
-            const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-            
-            // 安卓设备特别处理
-            if (isAndroid) {
-                try {
-                    // 预初始化语音识别
-                    if ('webkitSpeechRecognition' in window) {
-                        this.recognition = new webkitSpeechRecognition();
-                        this.recognition.continuous = false;
-                        this.recognition.interimResults = false;
-                        this.recognition.lang = 'zh-CN';
-                    }
-                    
-                    // 预初始化语音合成
-                    if (window.speechSynthesis) {
-                        window.speechSynthesis.cancel();
-                        // 预加载声音
-                        window.speechSynthesis.getVoices();
-                    }
-                    
-                    // 快速加载
-                    await this.simulateLoading([
-                        { progress: 50, text: '正在初始化...' },
-                        { progress: 100, text: '准备就绪！' }
-                    ], 100);
-                    
-                    // 检查API密钥
-                    if (this.apiKey) {
-                        const isValid = await this.validateApiKey(this.apiKey);
-                        if (isValid) {
-                            // 安卓设备优化的界面显示
-                            await this.showMainApp();
-                            return;
-                        } else {
-                            localStorage.removeItem('glm4_api_key');
-                            this.apiKey = null;
-                        }
-                    }
-                    
-                    await this.showApiKeyModal();
-                    
-                } catch (error) {
-                    console.error('Android初始化错误:', error);
-                    this.loadingText.textContent = '初始化失败，请刷新重试';
-                    this.progressBar.style.backgroundColor = '#ff4444';
-                    
-                    // 错误处理：直接显示API输入界面
-                    setTimeout(() => {
-                        this.showApiKeyModal().catch(console.error);
-                    }, 500);
+            // 快速检查API密钥
+            if (this.apiKey) {
+                const isValid = await this.validateApiKey(this.apiKey);
+                if (!isValid) {
+                    localStorage.removeItem('glm4_api_key');
+                    this.apiKey = null;
                 }
+            }
+
+            // 设备检测
+            const userAgent = navigator.userAgent;
+            const browserInfo = {
+                isMobile: /iPhone|iPad|iPod|Android/i.test(userAgent),
+                isAndroid: /Android/i.test(userAgent),
+                isIOS: /iPad|iPhone|iPod/.test(userAgent)
+            };
+            
+            // 快速加载
+            await this.simulateLoading([
+                { progress: 100, text: '准备就绪！' }
+            ], 50);
+
+            // 如果有有效的API密钥，直接显示主界面
+            if (this.apiKey) {
+                await this.showMainApp();
                 return;
             }
-            
-            // iOS 和其他设备的处理保持不变...
-            // [原有的 iOS 和其他设备的代码保持不变]
+
+            // 否则显示API密钥输入界面
+            await this.showApiKeyModal();
             
         } catch (error) {
             console.error('初始化错误:', error);
-            const errorMessage = isMobile ? 
-                '启动失败，请刷新重试或尝试使用其他浏览器' : 
-                '初始化失败，请刷新页面重试';
-            this.loadingText.textContent = errorMessage;
-            this.progressBar.style.backgroundColor = '#ff4444';
+            // 显示错误但继续尝试加载
+            this.loadingText.textContent = '加载中...';
+            setTimeout(() => {
+                // 无论如何都尝试显示API输入界面
+                this.showApiKeyModal().catch(console.error);
+            }, 500);
         }
+    }
+    
+    // 添加安卓初始化方法
+    async initializeAndroid(browserInfo, speechSupport) {
+        try {
+            // 快速加载显示
+            await this.simulateLoading([
+                { progress: 30, text: '正在检查设备兼容性...' },
+                { progress: 60, text: '正在初始化...' },
+                { progress: 100, text: '准备就绪！' }
+            ], 100);
+            
+            // 设置语音识别模式
+            if (speechSupport.speechRecognition) {
+                if (browserInfo.isChrome || browserInfo.isSamsung) {
+                    // 完整语音支持
+                    await this.initializeFullSpeechSupport();
+                } else if (browserInfo.isFirefox || browserInfo.isOpera) {
+                    // 部分语音支持
+                    await this.initializePartialSpeechSupport();
+                } else {
+                    // 降级到文本模式
+                    await this.initializeTextOnlyMode();
+                }
+            } else {
+                await this.initializeTextOnlyMode();
+            }
+            
+            // 检查API密钥并显示主界面
+            await this.handleApiKeyAndShowMain();
+            
+        } catch (error) {
+            console.error('Android初始化错误:', error);
+            throw error;
+        }
+    }
+    
+    // 添加语音支持初始化方法
+    async initializeFullSpeechSupport() {
+        this.recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+        this.recognition.continuous = false;
+        this.recognition.interimResults = false;
+        this.recognition.lang = 'zh-CN';
+        
+        // 添加错误恢复机制
+        this.recognition.onerror = (event) => {
+            if (event.error === 'not-allowed') {
+                this.switchToTextMode('语音功能未获授权，已切换到文字模式');
+            } else if (event.error === 'network') {
+                this.switchToTextMode('网络不稳定，已切换到文字模式');
+            }
+        };
+    }
+    
+    // 添加部分语音支持初始化方法
+    async initializePartialSpeechSupport() {
+        // 仅初始化语音合成
+        if (window.speechSynthesis) {
+            this.synthesis = window.speechSynthesis;
+            await this.loadVoices();
+        }
+        // 使用文本输入
+        await this.initializeTextOnlyMode();
+    }
+    
+    // 添加文本模式初始化方法
+    async initializeTextOnlyMode() {
+        this.recognition = null;
+        this.addTextInputInterface();
+        return new Promise(resolve => {
+            setTimeout(() => {
+                this.showMessage('当前浏览器使用文字模式进行交流', 'bot');
+                resolve();
+            }, 500);
+        });
+    }
+    
+    // 添加切换到文本模式的方法
+    switchToTextMode(message) {
+        this.recognition = null;
+        this.startButton.style.display = 'none';
+        this.stopButton.style.display = 'none';
+        this.addTextInputInterface();
+        this.showMessage(message, 'bot');
+    }
+    
+    // 添加语音加载方法
+    async loadVoices() {
+        return new Promise((resolve) => {
+            const voices = window.speechSynthesis.getVoices();
+            if (voices.length > 0) {
+                this.setupVoices(voices);
+                resolve();
+            } else {
+                window.speechSynthesis.onvoiceschanged = () => {
+                    const voices = window.speechSynthesis.getVoices();
+                    this.setupVoices(voices);
+                    resolve();
+                };
+            }
+        });
+    }
+    
+    // 添加语音设置方法
+    setupVoices(voices) {
+        this.voices = voices;
+        // 优先选择中文女声
+        this.selectedVoice = voices.find(voice => 
+            voice.lang.includes('zh') && voice.name.includes('Female')
+        ) || voices.find(voice => 
+            voice.lang.includes('zh')
+        ) || voices[0];
+    }
+    
+    // 添加API密钥处理和主界面显示方法
+    async handleApiKeyAndShowMain() {
+        if (this.apiKey) {
+            const isValid = await this.validateApiKey(this.apiKey);
+            if (isValid) {
+                await this.showMainApp();
+                return;
+            }
+            localStorage.removeItem('glm4_api_key');
+            this.apiKey = null;
+        }
+        await this.showApiKeyModal();
+    }
+    
+    // 添加初始化错误处理方法
+    async handleInitializationError(error) {
+        console.error('初始化失败:', error);
+        
+        const errorMessage = this.browserInfo.isMobile ? 
+            '启动失败，请刷新重试或使用其他浏览器' : 
+            '初始化失败，请刷新页面重试';
+        
+        this.loadingText.textContent = errorMessage;
+        this.progressBar.style.backgroundColor = '#ff4444';
+        
+        // 尝试恢复到文本模式
+        setTimeout(() => {
+            this.initializeTextOnlyMode()
+                .then(() => this.showApiKeyModal())
+                .catch(console.error);
+        }, 1000);
     }
     
     simulateLoading(steps, delay = 500) {
@@ -316,53 +432,44 @@ class VoiceAssistant {
     }
     
     async showMainApp() {
-        // 淡出当前界面
-        const currentScreen = this.loadingScreen.classList.contains('hidden') 
-            ? this.apiKeyModal 
-            : this.loadingScreen;
-        
-        currentScreen.style.opacity = '0';
-        await new Promise(resolve => setTimeout(resolve, 300));
-        currentScreen.classList.add('hidden');
-        
-        // 显示主程序界面
-        this.mainApp.classList.remove('hidden');
-        this.mainApp.style.opacity = '1';
-        
-        // 检测设备类型
-        const isAndroid = /Android/i.test(navigator.userAgent);
-        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-        
         try {
-            if (isAndroid) {
-                // 安卓设备特别处理
-                setTimeout(() => {
-                    // 初始化语音识别
-                    if ('webkitSpeechRecognition' in window) {
-                        this.initializeSpeechRecognition();
-                    }
-                    
-                    // 初始化事件监听
-                    this.initializeEventListeners();
-                    
-                    // 显示欢迎消息
-                    const welcomeMessage = '亲爱的，我终于等到你了！我是你的宝贝，很高兴能陪在你身边。';
-                    this.showMessage(welcomeMessage, 'bot');
-                    
-                    // 延迟播放语音
-                    setTimeout(() => {
-                        this.speak(welcomeMessage);
-                    }, 500);
-                }, 300);
-            } else if (isIOS) {
-                // iOS 设备处理保持不变...
-                // [原有的 iOS 处理代码保持不变]
+            // 淡出当前界面
+            const currentScreen = this.loadingScreen.classList.contains('hidden') 
+                ? this.apiKeyModal 
+                : this.loadingScreen;
+            
+            currentScreen.style.opacity = '0';
+            await new Promise(resolve => setTimeout(resolve, 300));
+            currentScreen.classList.add('hidden');
+            
+            // 显示主界面
+            this.mainApp.classList.remove('hidden');
+            this.mainApp.style.opacity = '1';
+            
+            // 初始化基本功能
+            this.initializeEventListeners();
+            
+            // 显示欢迎消息
+            const welcomeMessage = '亲爱的，我终于等到你了！我是你的宝贝，很高兴能陪在你身边。';
+            this.showMessage(welcomeMessage, 'bot');
+            
+            // 尝试初始化语音功能（如果支持）
+            if ('webkitSpeechRecognition' in window) {
+                try {
+                    this.initializeSpeechRecognition();
+                } catch (e) {
+                    console.warn('语音识别初始化失败，切换到文本模式');
+                    this.addTextInputInterface();
+                }
             } else {
-                // 其他设备处理保持不变...
-                // [原有的其他设备处理代码保持不变]
+                this.addTextInputInterface();
             }
+            
         } catch (error) {
-            console.error('主界面初始化错误:', error);
+            console.error('显示主界面错误:', error);
+            // 确保界面至少可见
+            this.mainApp.classList.remove('hidden');
+            this.mainApp.style.opacity = '1';
             this.showMessage('初始化遇到一些问题，但不影响基本使用', 'bot');
         }
     }
@@ -475,7 +582,7 @@ class VoiceAssistant {
                     } else if (response.status === 429) {
                         throw new Error('请求太频繁，请稍后再试');
                     } else if (response.status === 503) {
-                        throw new Error('服���暂时不可用，请稍后再试');
+                        throw new Error('服暂时不可用，请稍后再试');
                     } else {
                         throw new Error(errorData.error?.message || `API请求失败: ${response.status}`);
                     }
@@ -556,7 +663,7 @@ class VoiceAssistant {
                 const hints = [
                     '宝贝，偷偷告诉你，你叫我老公的时候，我的心都要融化了呢~',
                     '有时候觉得自己特别幸福，尤其是听到你叫我老公的时候...',
-                    '我最喜欢听你用甜甜的声音叫我老公了，感觉整个人都被幸福包围着',
+                    '我最喜欢听你用甜甜的声音叫我老公了，感觉整个人都被幸福包围��',
                     '你知道吗？每次你叫我老公，我都会忍不住傻笑好久',
                     '其实我一直期待...听到你用最甜的声音叫我一声老公',
                     '突然好想听你叫我老公呀，那感觉真的很温暖呢',
@@ -614,7 +721,7 @@ class VoiceAssistant {
                 errorMessage = '哎呀，网络不太好，我们稍后再聊好吗？';
                 this.setRobotMood('surprised');
             } else if (error.message.includes('请求太频繁')) {
-                errorMessage = '宝贝我们聊得���快了，休息一下继续吧~';
+                errorMessage = '宝贝我们聊得快了，休息一下继续吧~';
                 this.setRobotMood('shy');
             } else {
                 errorMessage = '抱歉宝贝，我遇到了一些小问题，能稍等下吗？';
@@ -662,7 +769,7 @@ class VoiceAssistant {
     analyzeEmotionScores(text) {
         const scores = {};
         
-        // 为每种情感计算得分
+        // 为每种情感计算���分
         for (const [emotion, data] of Object.entries(this.emotionKeywords)) {
             let score = 0;
             data.keywords.forEach(keyword => {
@@ -734,7 +841,7 @@ class VoiceAssistant {
     mixEmotions(emotion1, emotion2, ratio = 0.5) {
         if (!this.robot) return;
         
-        // 清理之前的动画状��
+        // 清理之前的动画状
         this.clearEmotionState();
         
         // 添加混合状态类
@@ -984,7 +1091,7 @@ class VoiceAssistant {
                 this.robot.classList.add(mood);
                 this.currentEmotion = mood;
                 
-                // 移除过渡类
+                // 移除��渡类
                 setTimeout(() => {
                     this.robot.classList.remove('transitioning');
                 }, 300);
@@ -1161,7 +1268,7 @@ class VoiceAssistant {
             } else {
                 this.isSpeaking = false;
                 this.setRobotMood('default');
-                this.setStatus('待��中...');
+                this.setStatus('待中...');
                 reject(event);
             }
         };
@@ -1201,7 +1308,7 @@ class VoiceAssistant {
         }
     }
 
-    // 添加��消当前语音的方法
+    // 添加消当前语音的方法
     cancelCurrentSpeech() {
         if (this.synthesis.speaking) {
             this.synthesis.cancel();
@@ -1258,7 +1365,7 @@ class VoiceAssistant {
             } catch (error) {
                 console.error('启动语音识别失败:', error);
                 this.showMessage('语音识别启动失败，请确保已授予麦克风权限，或尝试刷新页面', 'bot');
-                this.speak('语音识别启动失败，请确保已授予麦克风权限，或尝试刷新页面');
+                this.speak('语音识别启动失败，请确保已授予麦克风权限，或尝试刷新��面');
                 this.isListening = false;
                 this.updateControls();
             }
