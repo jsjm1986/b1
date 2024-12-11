@@ -181,6 +181,10 @@ class VoiceAssistant {
         
         // 启动加载流程
         this.initializeApp();
+        
+        // 添加防重复处理的标志
+        this.isProcessingResult = false;
+        this.lastProcessedText = null;
     }
     
     initializeVoices() {
@@ -678,6 +682,12 @@ class VoiceAssistant {
         const last = event.results.length - 1;
         const text = event.results[last][0].transcript;
         
+        // 防止重复处理
+        if (this.lastProcessedText === text) {
+            return;
+        }
+        this.lastProcessedText = text;
+        
         this.showMessage(text, 'user');
         this.setStatus('思考中...');
         this.setRobotMood('thinking');
@@ -687,7 +697,13 @@ class VoiceAssistant {
             this.synthesis.cancel();
         }
 
-        this.processUserInput(text);
+        // 直接处理用户输入
+        await this.processUserInput(text);
+        
+        // 清除最后处理的文本（为下一次做准备）
+        setTimeout(() => {
+            this.lastProcessedText = null;
+        }, 1000);
     }
     
     async processUserInput(text) {
@@ -1380,12 +1396,20 @@ class VoiceAssistant {
                             this.recognition.lang = 'zh-CN';
                             this.recognition.maxAlternatives = 1;
                             
-                            // 重新绑定事件
+                            // 重新绑定事件，确保只绑定一次
                             this.recognition.onstart = () => {
                                 this.handleRecognitionStart();
                                 this.showMessage('正在听您说话...', 'bot');
                             };
-                            this.recognition.onresult = (event) => this.handleRecognitionResult(event);
+                            this.recognition.onresult = (event) => {
+                                // 确保事件只触发一次
+                                if (!this.isProcessingResult) {
+                                    this.isProcessingResult = true;
+                                    this.handleRecognitionResult(event).finally(() => {
+                                        this.isProcessingResult = false;
+                                    });
+                                }
+                            };
                             this.recognition.onerror = (event) => this.handleRecognitionError(event);
                             this.recognition.onend = () => this.handleRecognitionEnd();
                         }
@@ -2014,7 +2038,7 @@ class VoiceAssistant {
         const bubble = document.createElement('div');
         bubble.className = `speech-bubble ${reaction.mood}`;
         
-        // 创建表情元素
+        // ��建表情元素
         const emoji = document.createElement('span');
         emoji.className = 'emoji';
         emoji.textContent = reaction.emoji[Math.floor(Math.random() * reaction.emoji.length)];
