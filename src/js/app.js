@@ -570,7 +570,7 @@ class VoiceAssistant {
                     'Authorization': key
                 },
                 body: JSON.stringify({
-                    model: 'glm-4',
+                    model: 'glm-4-plus',
                     messages: [
                         {
                             role: 'user',
